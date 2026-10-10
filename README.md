@@ -17,7 +17,7 @@ masks = "/Prove/Shullani/Archive/fooocus-cinematic/masks/"
 original = "/Prove/Shullani/Archive/fooocus-cinematic/original/"
 ```
 
-- prepare con facce
+- prepare with faces
 ```
 pixi run -e gpu prepare --images /Scratch/Shullani/Dataset/fooocus-cinematic/inpaints/ --out /Scratch/Shullani/Dataset/results/ --masks /Scratch/Shullani/Dataset/fooocus-cinematic/masks/
 ```
@@ -26,3 +26,7 @@ pixi run -e gpu prepare --images /Scratch/Shullani/Dataset/fooocus-cinematic/inp
 - quality: `pixi run -e gpu quality --device cuda:0 --out /Scratch/Shullani/Dataset/results/`
 - clip score: `pixi run -e gpu prompt --device cuda:0  --out /Scratch/Shullani/Dataset/results/ --prompts /Scratch/Shullani/Dataset/fooocus-cinematic/prompts.jsonl `
 - mps score: `pixi run -e mps mps /Scratch/Shullani/Dataset/results/ /Scratch/Shullani/Dataset/fooocus-cinematic/prompts.jsonl /data/staff/shullani/Documents/Research/IAPP/DETECTOR/iqa_detector/Weights/MPS_overall_checkpoint.pth /data/staff/shullani/Documents/Research/IAPP/DETECTOR/iqa_detector/MPS/`
+- FID/KID: `pixi run -e gpu dataset --device cuda:0 --out /Scratch/Shullani/Dataset/results/ --ref /Scratch/Shullani/Dataset/results-original/crops/face`
+
+
+- merge results: `pixi run merge --out /Scratch/Shullani/Dataset/results/`
