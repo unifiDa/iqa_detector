@@ -1,0 +1,120 @@
+[workspace]
+name = "eval-inpaint-faces"
+channels = ["conda-forge"]
+platforms = ["linux-64"]          # solo Linux x86_64
+
+# Ambienti:
+#   gpu  -> GPU NVIDIA: torch CUDA 12.8 + onnxruntime-gpu. Tutto tranne MPS.
+#   cpu      -> senza GPU:                      pixi run -e cpu <task>
+#   mps      -> solo per MPS, su GPU: transformers 4.27.3, la versione con cui e' stato salvato il
+#               checkpoint.                 pixi run -e mps mps ...
+#   mps-cpu  -> solo per MPS, senza GPU: fp32, piu' lento.
+#                                           pixi run -e mps-cpu mps ...
+# Verifica della GPU: pixi run gpu-check
+[environments]
+gpu = { features = ["gpu", "eval", "eval-gpu"], solve-group = "gpu" }
+cpu = { features = ["cpu", "eval", "eval-cpu"], solve-group = "cpu" }
+mps = { features = ["gpu", "mps"] }
+mps-cpu = { features = ["cpu", "mps"] }
+
+[dependencies]
+python = "3.11.*"
+numpy = "<2"              # evita problemi di compatibilita' con insightface/onnxruntime
+pandas = "*"
+opencv = "*"
+matplotlib = "*"          # grafici del notebook
+jupyterlab = "*"          # per aprire i notebook
+ipykernel = "*"
+ipywidgets = "*"          # controlli interattivi di eval_suite/viewer.ipynb
+
+# ---- torch ------------------------------------------------------------------------------------
+# RTX 5090 = Blackwell (sm_120): servono torch >= 2.7 compilato con CUDA >= 12.8.
+# Ruote cu128: un driver CUDA 13 esegue senza problemi programmi CUDA 12.x, e i pacchetti
+# nvidia-*-cu12 che arrivano con torch (cuBLAS 12, cuDNN 9) servono anche a onnxruntime-gpu.
+[feature.gpu.pypi-dependencies]
+torch = { version = ">=2.8", index = "https://download.pytorch.org/whl/cu128" }
+torchvision = { version = ">=0.23", index = "https://download.pytorch.org/whl/cu128" }
+
+[feature.cpu.dependencies]
+pytorch-cpu = "*"         # torch senza CUDA (molto piu' leggero)
+torchvision = "*"
+
+# ---- metriche (tutto tranne MPS) --------------------------------------------------------------
+[feature.eval.pypi-dependencies]
+pyiqa = "*"
+insightface = "*"
+transformers = "*"        # CLIP score
+clean-fid = "*"           # FID/KID a livello di dataset (d_dataset.py)
+pillow = "*"
+
+[feature.eval-gpu.pypi-dependencies]
+onnxruntime-gpu = ">=1.21"   # insightface su GPU; ricade da solo sulla CPU se CUDA non va
+
+[feature.eval-cpu.pypi-dependencies]
+onnxruntime = "*"
+
+# ---- MPS --------------------------------------------------------------------------------------
+# Il checkpoint MPS e' l'intero modello serializzato con pickle, comprese le classi interne di
+# transformers 4.27.3 (es. CLIPTextTransformer, rimossa nelle versioni recenti): si apre solo con
+# quella versione. huggingface-hub e tokenizers vanno tenuti all'epoca (inizio 2023).
+[feature.mps.pypi-dependencies]
+transformers = "==4.27.3"
+tokenizers = ">=0.13.3,<0.14"
+huggingface-hub = ">=0.11,<0.17"
+pillow = "*"
+
+[feature.mps.tasks.mps]
+# pixi run -e mps     mps results/ prompts.jsonl MPS_overall_checkpoint.pth MPS/   (GPU, fp16)
+# pixi run -e mps-cpu mps results/ prompts.jsonl MPS_overall_checkpoint.pth MPS/   (CPU, fp32)
+# (si aggiunge a c_prompt.csv senza rifare CLIP, poi aggiorna results.csv)
+args = ["out", "prompts", "ckpt", "repo"]
+cmd = """python eval_suite/c_prompt.py --out {{ out }} --prompts {{ prompts }} --metrics mps \
+--mps-ckpt {{ ckpt }} --mps-repo {{ repo }} && python eval_suite/merge.py --out {{ out }}"""
+
+[tasks]
+# controlla che torch e onnxruntime usino la GPU
+gpu-check = "python eval_suite/gpu_check.py"
+
+# pixi run eval --images imgs/ --masks masks/ --out results/
+eval = "python check.py"
+
+# solo coerenza regione/contorno (sfocatura, tinta Lab, bordo): niente modelli da scaricare
+quick = "python check.py --no-face-det --metrics"
+
+# ---- eval_suite: uno stadio per task; gli argomenti in coda vengono passati allo script ----
+# A gira su CPU (OpenCV); prepare (insightface), B, C e D usano la GPU se c'e'.
+# pixi run prepare --images imgs/ --masks masks/ --out results/
+prepare = "python eval_suite/prepare.py"
+# pixi run coherence --out results/          (A: sfocatura, tinta Lab, bordo)
+coherence = "python eval_suite/a_coherence.py"
+# pixi run quality --out results/            (B: topiq_nr-face, musiq, clipiqa)
+quality = "python eval_suite/b_quality.py"
+# pixi run prompt --out results/ --prompts prompts.jsonl      (C: CLIP score; per MPS usa il task mps)
+prompt = "python eval_suite/c_prompt.py"
+# pixi run dataset --out results/ --ref originali/crops/face  (D: FID/KID)
+dataset = "python eval_suite/d_dataset.py"
+# pixi run merge --out results/              (results.csv + summary.json)
+merge = "python eval_suite/merge.py"
+
+# pipeline completa A+B (+C se passi prompts):
+#   pixi run eval_all imgs/ results/ masks/
+#   pixi run eval_all imgs/ results/ masks/ prompts.jsonl
+# senza maschere passa "" come terzo argomento
+[tasks.eval_all]
+args = ["images", "out", { arg = "masks", default = "" }, { arg = "prompts", default = "" }]
+cmd = """python eval_suite/prepare.py --images {{ images }} --out {{ out }}{% if masks %} --masks {{ masks }}{% endif %} \
+&& python eval_suite/a_coherence.py --out {{ out }} \
+&& python eval_suite/b_quality.py --out {{ out }} \
+{% if prompts %}&& python eval_suite/c_prompt.py --out {{ out }} --prompts {{ prompts }} {% endif %}\
+&& python eval_suite/merge.py --out {{ out }}"""
+
+# solo A, senza modelli da scaricare: pixi run quick_all imgs/ results/ masks/
+[tasks.quick_all]
+args = ["images", "out", { arg = "masks", default = "" }]
+cmd = """python eval_suite/prepare.py --no-face-det --images {{ images }} --out {{ out }}{% if masks %} --masks {{ masks }}{% endif %} \
+&& python eval_suite/a_coherence.py --out {{ out }} \
+&& python eval_suite/merge.py --out {{ out }}"""
+
+[tasks.lab]
+# apre JupyterLab: pixi run lab, poi eval_suite/viewer.ipynb
+cmd = "jupyter lab"
