@@ -2,7 +2,7 @@
 
 1. initialize pixi enviroment
 ```
-https://github.com/Kwai-Kolors/MPS.git
+wget -qO- https://pixi.sh/install.sh | sh
 ```
 2. clone MPS repo
 ```
