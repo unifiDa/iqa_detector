@@ -7,6 +7,8 @@ wget -qO- https://pixi.sh/install.sh | sh
 2. clone MPS repo
 ```
 git clone https://github.com/Kwai-Kolors/MPS.git
+
+wget https://huggingface.co/szh/mps-pth/resolve/main/MPS_overall_checkpoint.pth -O Weights/MPS_overall_checkpoint.pth
 ```
 
 ## Dataset -- LESC
