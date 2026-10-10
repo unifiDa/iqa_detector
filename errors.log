@@ -1,0 +1,73 @@
+VLM fallito per frame_078179_track002: Impossibile trovare 'Replace with:' nell'output: 'Rationale:![](image) is![](![](image)).\n\nVisual Style:![](image)\n\nReplace![](image) with![](image)'
+VLM fallito per frame_023132_track002: Impossibile trovare 'Replace with:' nell'output: 'Rationale:! The!!! image! is!!!!!!!!!!! greyscale! Visual!!!!! Style! :!!!!!!!!!!!!!!!!!!! Monochrome! Replace!!!!! with!! :!!!!!!!!!!!!!!!!!! A!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!'
+VLM fallito per frame_078179_track002: Impossibile trovare 'Replace with:' nell'output: 'Rationale:![](image) is![](![](image)).\n\nVisual Style:![](image)\n\nReplace![](image) with![](image)'
+VLM fallito per frame_078179_track002: Impossibile trovare 'Replace with:' nell'output: 'Rationale:![](image) is![](![](image)).\n\nVisual Style:![](image)\n\nReplace![](image) with![](image)'
+VLM fallito per frame_078179_track002: Impossibile trovare 'Replace with:' nell'output: 'Rationale:![](image) is![](![](image)).\n\nVisual Style:![](image)\n\nReplace![](image) with![](image)'
+VLM fallito per frame_023132_track002: Impossibile trovare 'Replace with:' nell'output: 'Rationale:! The!!! image! is!!!!!!!!!!! greyscale! Visual!!!!! Style! :!!!!!!!!!!!!!!!!!!! Monochrome! Replace!!!!! with!! :!!!!!!!!!!!!!!!!!! A!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!'
+VLM fallito per frame_078179_track002: CUDA error: device-side assert triggered
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+VLM fallito per frame_023132_track002: CUDA error: device-side assert triggered
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+VLM fallito per frame_011056_track010: CUDA error: device-side assert triggered
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+VLM fallito per frame_011595_track002: CUDA error: device-side assert triggered
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+VLM fallito per frame_009540_track002: CUDA error: device-side assert triggered
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+VLM fallito per frame_028353_track001: CUDA error: device-side assert triggered
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+VLM fallito per frame_132765_track003: CUDA error: device-side assert triggered
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+VLM fallito per frame_086528_track001: CUDA error: device-side assert triggered
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+VLM fallito per frame_043797_track042: CUDA error: device-side assert triggered
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+VLM fallito per frame_010180_track024: CUDA error: device-side assert triggered
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+Disegno box fallito per frame_078179_track002: [Errno 2] No such file or directory: '~/Dataset/immagine.png'
+Disegno box fallito per frame_023132_track002: [Errno 2] No such file or directory: '~/Dataset/immagine.png'
+Disegno box fallito per frame_011056_track010: [Errno 2] No such file or directory: '~/Dataset/immagine.png'
+Disegno box fallito per frame_011595_track002: [Errno 2] No such file or directory: '~/Dataset/immagine.png'
+Disegno box fallito per frame_009540_track002: [Errno 2] No such file or directory: '~/Dataset/immagine.png'
+Disegno box fallito per frame_028353_track001: [Errno 2] No such file or directory: '~/Dataset/immagine.png'
+Disegno box fallito per frame_132765_track003: [Errno 2] No such file or directory: '~/Dataset/immagine.png'
+Disegno box fallito per frame_086528_track001: [Errno 2] No such file or directory: '~/Dataset/immagine.png'
+Disegno box fallito per frame_043797_track042: [Errno 2] No such file or directory: '~/Dataset/immagine.png'
+Disegno box fallito per frame_010180_track024: [Errno 2] No such file or directory: '~/Dataset/immagine.png'
+Disegno box fallito per frame_037045_track001: [Errno 2] No such file or directory: '~/Dataset/immagine.png'
+VLM fallito per frame_078179_track002: CUDA error: device-side assert triggered
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+VLM fallito per frame_078179_track002: Impossibile trovare 'Replace with:' nell'output: 'Rationale:![](image) is![](![](image)).\n\nVisual Style:![](image)\n\nReplace![](image) with![](image)'
