@@ -35,7 +35,7 @@ def build_parser():
     ap = argparse.ArgumentParser(description="B. qualita' del ritaglio (pyiqa)",
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     ap.add_argument("--out", required=True, type=Path, help="cartella creata da prepare.py")
-    ap.add_argument("--metrics", nargs="+", choices=METRICS, default=["topiq_nr-face", "musiq", "clipiqa"])
+    ap.add_argument("--metrics", nargs="+", choices=METRICS, default=METRICS)#["topiq_nr-face", "musiq", "clipiqa"])
     ap.add_argument("--device", default=None, help="cpu/cuda (default: cuda se disponibile)")
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--overwrite", action="store_true")
