@@ -62,6 +62,7 @@ transformers = "==4.27.3"
 tokenizers = ">=0.13.3,<0.14"
 huggingface-hub = ">=0.11,<0.17"
 pillow = "*"
+einops = ">=0.8.2, <0.9"
 
 [feature.mps.tasks.mps]
 # pixi run -e mps     mps results/ prompts.jsonl MPS_overall_checkpoint.pth MPS/   (GPU, fp16)
