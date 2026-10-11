@@ -34,7 +34,7 @@ def summarize(df, name, d_entries):
         s["flags"] = {str(k): int(v) for k, v in cnt[cnt != ""].value_counts().items()}
     if d_entries:
         s["fid_kid"] = d_entries
-    return name
+    return s
 
 
 def main(argv=None):
