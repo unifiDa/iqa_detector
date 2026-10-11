@@ -31,7 +31,7 @@ import cv2
 import numpy as np
 import pandas as pd
 
-from common import load_index
+from eval_suite.common import load_index
 
 SIDES = ("top", "bottom", "left", "right")
 
