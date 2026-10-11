@@ -24,6 +24,7 @@ import pandas as pd
 
 VERSION = "v3.0"
 IMG_EXT = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
+MASK_SIZE = {"large", "medium", "small"}
 CROP_SIZE = 512
 
 INDEX_CSV = "index.csv"
@@ -50,6 +51,26 @@ def find_mask(mask_dir: Path, stem: str, template: str):
         if p.exists():
             return p
     return None
+
+
+
+def find_mask_generic(mask_dir: Path, stem: str, prefix="mask_"):
+    """Schema 'size': la maschera si chiama <prefix><nome fino a large|medium|small compresi>.<ext>.
+    Es. 'Agfa_DC-504_0_10.JPG_large_0_inpainted-0.png' -> 'mask_Agfa_DC-504_0_10.JPG_large.png'. Ritorna None 
+    se il nome non contiene nessuna delle tre parole o se il file non esiste."""
+    for word in MASK_SIZE:
+        idx = stem.find(word)
+        if idx >= 0:
+            base = prefix + stem[:idx + len(word)]
+            break
+    else:
+        return None
+    for ext in IMG_EXT:
+        p = Path(mask_dir) / f"{base}{ext}"
+        if p.exists():
+            return p
+    return None
+
 
 
 def load_mask(path, shape, invert: bool):
