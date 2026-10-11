@@ -93,12 +93,12 @@ def main(argv=None):
     print(f"Salvato {path} ({len(df)} immagini)")
     if "frame_pad_sides" in df:
         has = df["frame_pad_sides"].fillna("") != ""
-        print(f"frame con banda replicata (>= {args.min_frac:.0%} del lato): {int(has.sum())}/{len(df)}  -> flag pixel_replicati")
+        print(f"frame con banda replicata (>= {args.min_frac:.0%} del lato): {int(has.sum())}/{len(df)}  -> flag edge padding")
         if has.any():
             print("   lati:", df.loc[has, "frame_pad_sides"].str.split(",").explode().value_counts().to_dict())
     if "crop_outside_sides" in df:
         out = df["crop_outside_sides"].fillna("") != ""
-        print(f"ritagli con box FUORI dal frame (padding certo): {int(out.sum())}/{len(df)}  -> flag ritaglio_con_padding"
+        print(f"ritagli con box FUORI dal frame (padding certo): {int(out.sum())}/{len(df)}  -> flag padded crop"
               + ("" if out.any() else "  (ok)"))
         if out.any():
             print("   i ritagli sono vecchi: cancella --out e rifai prepare con il common.py corretto")

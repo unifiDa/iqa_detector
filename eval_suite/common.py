@@ -339,7 +339,7 @@ def load_merged(out_dir: Path):
             s = s[["file"] + [c for c in s.columns if c not in df.columns]]
             df = df.merge(s, on="file", how="left")
     if "frame_pad_sides" in df:
-        df = add_flag(df, df["frame_pad_sides"].fillna("") != "", "pixel_replicati")
+        df = add_flag(df, df["frame_pad_sides"].fillna("") != "", "edge padding")
     if "crop_outside_sides" in df:
-        df = add_flag(df, df["crop_outside_sides"].fillna("") != "", "ritaglio_con_padding")
+        df = add_flag(df, df["crop_outside_sides"].fillna("") != "", "padded crop")
     return df
