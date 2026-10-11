@@ -11,6 +11,13 @@ git clone https://github.com/Kwai-Kolors/MPS.git
 wget https://huggingface.co/szh/mps-pth/resolve/main/MPS_overall_checkpoint.pth -O Weights/MPS_overall_checkpoint.pth
 ```
 
+3. install dependencies
+```
+pixi install
+pixi install -e mps
+```
+
+
 ## Dataset -- LESC
 
 ```
