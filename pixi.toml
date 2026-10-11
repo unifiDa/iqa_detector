@@ -82,6 +82,10 @@ gpu-check = "python eval_suite/gpu_check.py"
 prepare = "python eval_suite/prepare.py"
 # pixi run prepare_generic --images imgs/ --masks masks/ --out results/
 prepare_generic = "python eval_suite/prepare_generic.py"
+# pixi run make_prompts --images imgs/ --masks masks/ --out prompts.jsonl --json-dir jsons/
+make_prompts = "python eval_suite/make_prompts.py"
+
+
 
 # pixi run coherence --out results/          (A: sfocatura, tinta Lab, bordo)
 coherence = "python eval_suite/a_coherence.py"

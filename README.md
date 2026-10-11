@@ -68,4 +68,4 @@ pixi run -e gpu prepare_generic --images /home/dasara/Research/btb-dresden-all/f
 - coherence: `pixi run coherence --out /home/dasara/Research/results/flux/`
 - check padding: `pixi run padding --out /home/dasara/Research/results/flux/`
 - quality: `pixi run -e gpu quality --device cuda:0 --metrics musiq clipiqa brisque niqe maniqa --out /home/dasara/Research/results/flux/`
-- generate prompts.jsonl: `pixi run python make_prompts.py --json-dir /home/dasara/Research/btb-dresden-all/miniInternVL_btb_prompts/ --out /home/dasara/Research/results/flux/prompts.jsonl --images /home/dasara/Research/btb-dresden-all/flux_inpaint/`
+- generate prompts.jsonl: `pixi run make_prompts --json-dir /home/dasara/Research/btb-dresden-all/miniInternVL_btb_prompts/ --out /home/dasara/Research/results/flux/prompts.jsonl --images /home/dasara/Research/btb-dresden-all/flux_inpaint/`
