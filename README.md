@@ -69,3 +69,7 @@ pixi run -e gpu prepare_generic --images /home/dasara/Research/btb-dresden-all/f
 - check padding: `pixi run padding --out /home/dasara/Research/results/flux/`
 - quality: `pixi run -e gpu quality --device cuda:0 --metrics musiq clipiqa brisque niqe maniqa --out /home/dasara/Research/results/flux/`
 - generate prompts.jsonl: `pixi run make_prompts --json-dir /home/dasara/Research/btb-dresden-all/miniInternVL_btb_prompts/ --out /home/dasara/Research/results/flux/prompts.jsonl --images /home/dasara/Research/btb-dresden-all/flux_inpaint/`
+- clip score: `pixi run -e gpu prompt --device cuda:0  --out /home/dasara/Research/results/flux/ --prompts /home/dasara/Research/results/flux/prompts.jsonl`
+- mps score: `pixi run -e mps mps /home/dasara/Research/results/flux/ /home/dasara/Research/results/flux/prompts.jsonl /home/dasara/Research/code/iqa_detector/Weights/MPS_overall_checkpoint.pth /home/dasara/Research/code/iqa_detector/MPS/`
+
+- merge results: `pixi run merge --out /home/dasara/Research/results/flux/`
