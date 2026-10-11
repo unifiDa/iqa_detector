@@ -85,6 +85,8 @@ prepare_generic = "python eval_suite/prepare_generic.py"
 
 # pixi run coherence --out results/          (A: sfocatura, tinta Lab, bordo)
 coherence = "python eval_suite/a_coherence.py"
+# pixi run padding --out results/           (pixel replicati nel frame e ritagli fuori dal frame; flag per merge)
+padding = "python eval_suite/check_padding.py"
 # pixi run quality --out results/            (B: topiq_nr-face, musiq, clipiqa)
 quality = "python eval_suite/b_quality.py"
 # pixi run prompt --out results/ --prompts prompts.jsonl      (C: CLIP score; per MPS usa il task mps)
