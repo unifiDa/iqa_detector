@@ -24,7 +24,7 @@ import pandas as pd
 
 VERSION = "v3.0"
 IMG_EXT = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
-MASK_SIZE = {"large", "medium", "small"}
+MASK_SIZE = ("large", "medium", "small")      # tupla: l'ordine e' la priorita' (con un set cambiava a ogni lancio)
 CROP_SIZE = 512
 
 INDEX_CSV = "index.csv"
@@ -177,12 +177,16 @@ def face_region(shape, box):
 
 
 def square_box(shape, box, margin=1.4):
-    """Quadrato centrato sul bbox, lato = lato maggiore x margin. Puo' uscire dall'immagine."""
+    """Quadrato centrato sul bbox, lato = lato maggiore x margin, SEMPRE dentro l'immagine.
+    Se sporgerebbe dal bordo lo si sposta verso l'interno (la regione non sara' piu' al centro); se e'
+    piu' grande dell'immagine, il lato si riduce al lato corto. Niente padding: i pixel replicati
+    creano strisce innaturali che abbassano MUSIQ/CLIPIQA/TOPIQ e allontanano il ritaglio dal prompt."""
     h, w = shape[:2]
     x0, y0, x1, y1 = box
-    cx, cy = min(max((x0 + x1) / 2, 0), w), min(max((y0 + y1) / 2, 0), h)
-    side = max(int(max(x1 - x0, y1 - y0) * margin), 16)
-    sx0, sy0 = int(cx - side / 2), int(cy - side / 2)
+    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+    side = min(max(int(max(x1 - x0, y1 - y0) * margin), 16), h, w)
+    sx0 = int(round(min(max(cx - side / 2, 0), w - side)))
+    sy0 = int(round(min(max(cy - side / 2, 0), h - side)))
     return sx0, sy0, sx0 + side, sy0 + side
 
 

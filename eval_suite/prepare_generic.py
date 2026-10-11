@@ -2,7 +2,8 @@
 """
 prepare_generic.py - passo 0 per inpainting GENERICO (non solo volti): niente rilevamento volti.
 
-  - MASCHERA: e' la regione da valutare (region_src=mask). Senza maschera la regione e' l'immagine
+  - MASCHERA (nome: mask_<nome fino a large|medium|small>.<ext>, vedi find_mask_generic in common.py):
+    e' la regione da valutare (region_src=mask). Senza maschera la regione e' l'immagine
     intera (region_src=none) e il ritaglio e' l'immagine intera;
   - RITAGLIO (crop_kind): mask = quadrato 512x512 attorno al bbox della maschera, full = immagine intera
     (lato lungo <= 768). Mai "face".
@@ -12,7 +13,7 @@ del volto (n_faces, face_found, det_score, face_in_mask, face_x0..y1, face_px) v
 script successivi funzionano senza modifiche. Richiede lo stesso common.py di prepare.py.
 
   python prepare_generic.py --images imgs/ --masks masks/ --out res_g1
-  python prepare_generic.py --images imgs/ --masks masks/ --out res_g1 --mask-template "{stem}_m" --invert
+  python prepare_generic.py --images imgs/ --masks masks/ --out res_g1 --invert      # nero = zona modificata
   python prepare_generic.py --images imgs2/ --out res_g2                  # senza maschere: tutta l'immagine
   python prepare_generic.py --images imgs/ --masks masks/ --out res_g3 --crop full
 """
