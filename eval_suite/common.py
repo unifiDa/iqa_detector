@@ -28,7 +28,7 @@ MASK_SIZE = ("large", "medium", "small")      # tupla: l'ordine e' la priorita' 
 CROP_SIZE = 512
 
 INDEX_CSV = "index.csv"
-STAGE_CSV = {"a": "a_coherence.csv", "b": "b_quality.csv", "c": "c_prompt.csv"}
+STAGE_CSV = {"a": "a_coherence.csv", "b": "b_quality.csv", "c": "c_prompt.csv", "p": "padding.csv"}
 D_JSON = "d_dataset.json"
 
 
@@ -319,8 +319,17 @@ def describe(df, cols):
         print(df[cols].describe(percentiles=[.1, .5, .9]).T[["count", "mean", "10%", "50%", "90%"]].round(3))
 
 
+def add_flag(df, mask, name):
+    """Aggiunge `name` alla colonna "flags" (separati da virgola) nelle righe dove mask e' True."""
+    flags = df["flags"].fillna("").astype(str) if "flags" in df else pd.Series("", index=df.index)
+    df["flags"] = [f"{f},{name}" if (m and f) else (name if m else f) for f, m in zip(flags, mask)]
+    return df
+
+
 def load_merged(out_dir: Path):
-    """index.csv + a/b/c uniti su 'file' (le colonne mancanti restano NaN)."""
+    """index.csv + a/b/c/padding uniti su 'file' (le colonne mancanti restano NaN).
+    Dal padding.csv di check_padding.py si aggiungono i flag: pixel_replicati (banda replicata nel frame
+    originale) e ritaglio_con_padding (box del ritaglio fuori dal frame)."""
     out_dir = Path(out_dir)
     df = load_index(out_dir)
     for stage, name in STAGE_CSV.items():
@@ -329,4 +338,8 @@ def load_merged(out_dir: Path):
             s = pd.read_csv(p)
             s = s[["file"] + [c for c in s.columns if c not in df.columns]]
             df = df.merge(s, on="file", how="left")
+    if "frame_pad_sides" in df:
+        df = add_flag(df, df["frame_pad_sides"].fillna("") != "", "pixel_replicati")
+    if "crop_outside_sides" in df:
+        df = add_flag(df, df["crop_outside_sides"].fillna("") != "", "ritaglio_con_padding")
     return df

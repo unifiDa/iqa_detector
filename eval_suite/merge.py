@@ -12,7 +12,8 @@ from pathlib import Path
 from common import D_JSON, VERSION, describe, load_merged
 
 SKIP_STATS = {"width", "height", "mask_invert", "face_x0", "face_y0", "face_x1", "face_y1",
-              "mask_x0", "mask_y0", "mask_x1", "mask_y1", "crop_x0", "crop_y0", "crop_x1", "crop_y1"}
+              "mask_x0", "mask_y0", "mask_x1", "mask_y1", "crop_x0", "crop_y0", "crop_x1", "crop_y1",
+              *[f"frame_{side}_pad{suffix}" for side in ("top", "bottom", "left", "right") for suffix in ("", "_frac")]}
 
 
 def summarize(df, name, d_entries):
