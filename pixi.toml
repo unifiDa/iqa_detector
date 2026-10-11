@@ -86,6 +86,9 @@ quick = "python check.py --no-face-det --metrics"
 # A gira su CPU (OpenCV); prepare (insightface), B, C e D usano la GPU se c'e'.
 # pixi run prepare --images imgs/ --masks masks/ --out results/
 prepare = "python eval_suite/prepare.py"
+# pixi run prepare_generic --images imgs/ --masks masks/ --out results/
+prepare_generic = "python eval_suite/prepare_generic.py"
+
 # pixi run coherence --out results/          (A: sfocatura, tinta Lab, bordo)
 coherence = "python eval_suite/a_coherence.py"
 # pixi run quality --out results/            (B: topiq_nr-face, musiq, clipiqa)
@@ -96,25 +99,6 @@ prompt = "python eval_suite/c_prompt.py"
 dataset = "python eval_suite/d_dataset.py"
 # pixi run merge --out results/              (results.csv + summary.json)
 merge = "python eval_suite/merge.py"
-
-# pipeline completa A+B (+C se passi prompts):
-#   pixi run eval_all imgs/ results/ masks/
-#   pixi run eval_all imgs/ results/ masks/ prompts.jsonl
-# senza maschere passa "" come terzo argomento
-[tasks.eval_all]
-args = ["images", "out", { arg = "masks", default = "" }, { arg = "prompts", default = "" }]
-cmd = """python eval_suite/prepare.py --images {{ images }} --out {{ out }}{% if masks %} --masks {{ masks }}{% endif %} \
-&& python eval_suite/a_coherence.py --out {{ out }} \
-&& python eval_suite/b_quality.py --out {{ out }} \
-{% if prompts %}&& python eval_suite/c_prompt.py --out {{ out }} --prompts {{ prompts }} {% endif %}\
-&& python eval_suite/merge.py --out {{ out }}"""
-
-# solo A, senza modelli da scaricare: pixi run quick_all imgs/ results/ masks/
-[tasks.quick_all]
-args = ["images", "out", { arg = "masks", default = "" }]
-cmd = """python eval_suite/prepare.py --no-face-det --images {{ images }} --out {{ out }}{% if masks %} --masks {{ masks }}{% endif %} \
-&& python eval_suite/a_coherence.py --out {{ out }} \
-&& python eval_suite/merge.py --out {{ out }}"""
 
 [tasks.lab]
 # apre JupyterLab: pixi run lab, poi eval_suite/viewer.ipynb
