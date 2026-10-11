@@ -119,14 +119,14 @@ def coherence_flags(r, a):
     v = lambda k: r.get(k) if is_num(r.get(k)) else None   # noqa: E731
     if v("blur_logratio") is not None:
         if r["blur_logratio"] < -a.blur_thr:
-            f.append("sfocato")
+            f.append("blurred")
         if r["blur_logratio"] > a.blur_thr:
-            f.append("troppo_nitido")
+            f.append("too sharp")
     if v("ab_spread_out") is not None and r["ab_spread_out"] < a.mono_spread \
             and ((v("color_dev_frac_in") or 0) > a.color_frac or (v("ab_shift") or 0) > AB_SHIFT_THR):
-        f.append("colore_estraneo")
+        f.append("color")
     if (v("seam_L") or 0) > a.seam_thr or (v("seam_ab") or 0) > a.seam_thr:
-        f.append("bordo_visibile")
+        f.append("visible seam")
     return ",".join(f)
 
 
