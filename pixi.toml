@@ -76,12 +76,6 @@ cmd = """python eval_suite/c_prompt.py --out {{ out }} --prompts {{ prompts }} -
 # controlla che torch e onnxruntime usino la GPU
 gpu-check = "python eval_suite/gpu_check.py"
 
-# pixi run eval --images imgs/ --masks masks/ --out results/
-eval = "python check.py"
-
-# solo coerenza regione/contorno (sfocatura, tinta Lab, bordo): niente modelli da scaricare
-quick = "python check.py --no-face-det --metrics"
-
 # ---- eval_suite: uno stadio per task; gli argomenti in coda vengono passati allo script ----
 # A gira su CPU (OpenCV); prepare (insightface), B, C e D usano la GPU se c'e'.
 # pixi run prepare --images imgs/ --masks masks/ --out results/
