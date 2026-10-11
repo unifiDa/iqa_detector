@@ -4,7 +4,7 @@
 #   ./lamarr.sh                       tutti i passi, nell'ordine
 #   ./lamarr.sh quality prompt        solo i passi indicati (sempre nell'ordine della pipeline)
 #
-# Passi: prepare, prepare_orig, coherence, quality, prompt, mps, dataset, merge
+# Passi: prepare, prepare_orig, coherence, padding, quality, prompt, mps, dataset, merge
 # Va messo nella radice del progetto (la cartella che contiene pixi.toml e eval_suite/).
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -40,6 +40,11 @@ step_coherence() {
   pixi run coherence --out "$OUT"
 }
 
+# pixel replicati nel frame (flag pixel_replicati) e ritagli fuori dal frame (deve dare 0)
+step_padding() {
+  pixi run padding --out "$OUT"
+}
+
 # B. topiq_nr-face, musiq, clipiqa, ...
 step_quality() {
   pixi run -e gpu quality --device "$DEVICE" --out "$OUT"
@@ -66,7 +71,7 @@ step_merge() {
 }
 
 # ---- esecuzione -------------------------------------------------------------------------------
-ALL=(prepare prepare_orig coherence quality prompt mps dataset merge)
+ALL=(prepare prepare_orig coherence padding quality prompt mps dataset merge)
 if [ "$#" -eq 0 ]; then
   WANTED=("${ALL[@]}")
 else
