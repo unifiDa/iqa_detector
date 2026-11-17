@@ -15,6 +15,7 @@ The evaluation pipeline, split by component. Every script writes into the same `
 | `e_age.py` | **E** age of the faces (YuNet + Hugging Face ViT), one row per face | `e_age.csv`, `age_annotated/` | opencv, torch, transformers | yes |
 | `merge.py` | merges A-D | `results.csv`, `summary.json` | pandas | no |
 | `filter_images.py` | keeps the colour images without minors | `filtered/kept.csv`, `filtered/discarded.csv` | pandas | no |
+| `export_images.py` | saves all the kept (or discarded) images in one PDF contact sheet + a list of paths | `filtered/kept.pdf`, `filtered/kept.txt` | opencv, pandas | no |
 | `gpu_check.py` | checks that torch and onnxruntime use the GPU | — | torch, onnxruntime | — |
 | `viewer_*.ipynb` | notebooks to look at the results (see [Notebooks](#notebooks)) | — | matplotlib, ipywidgets (opt.) | no |
 
@@ -179,6 +180,19 @@ In `a_coherence.py` the flags are recomputed at every run from the saved columns
 - `viewer_filter.ipynb`: kept / discarded images of `filter_images.py`, with the metric distributions to choose the thresholds, mosaics grouped by discard reason and a single-frame inspector.
 
 None of them uses the GPU: they run in any environment.
+
+### Reviewing all the kept images in one file
+
+The notebooks only show a sample. To check every image that survived the filter, `export_images.py` writes a PDF contact sheet (thumbnail, file name and `cd` = `color_dev_frac_in`, `pm` = `p_minor_max` under each image, 48 per page) and a plain list of the paths:
+
+```bash
+pixi run export --out results/                                    # filtered/kept.pdf + filtered/kept.txt
+pixi run export --out results/ --table results/filtered/discarded.csv   # the discarded ones, with their reason
+pixi run export --out results/ --source crop                      # the 512 px crops instead of the full frames
+pixi run export --out results/ --shuffle --limit 300              # a random sample
+```
+
+The PDF is built page by page, so thousands of images are fine. `--cols`, `--rows` and `--tile` change how many thumbnails go on a page and how big they are.
 
 ## Common problems
 
