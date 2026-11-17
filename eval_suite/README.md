@@ -114,7 +114,7 @@ pixi run -e gpu age --out results/ --input photos/  # stand-alone: any image or 
 pixi run -e gpu age --out results/ --model <hf_repo>   # another age model
 ```
 
-- **Output:** `e_age.csv` has one row per face (`file`, `image_path`, face box, `det_score`, `age_bin`, `age_conf`). Images with no detected face get a row with an empty `age_bin`, so they are not processed again when you resume. Unless you pass `--no-draw` (or `--crops`), the annotated frames go to `age_annotated/`.
+- **Output:** `e_age.csv` has one row per face (`file`, `image_path`, face box, `det_score`, `age_bin`, `age_conf`, `p_minor`). `p_minor` is the sum of the probabilities of the bins in `--minor-bins` (default `0-2`, `3-9`, `10-19`; they must match the model labels). Images with no detected face get a row with an empty `age_bin`, so they are not processed again when you resume. Unless you pass `--no-draw` (or `--crops`), the annotated frames go to `age_annotated/`.
 - **Output is an age bin** with a probability, not a number. For a numeric age use a regression model (e.g. MiVOLO) through `--model`, if compatible.
 - **First run:** YuNet is downloaded into `models/` and the Hugging Face model from the Hub (network needed).
 - **Resume:** images already present in `e_age.csv` are skipped; `--overwrite` starts again.
@@ -123,7 +123,7 @@ pixi run -e gpu age --out results/ --model <hf_repo>   # another age model
 
 - `color_dev_frac_in <= --max-color-dev` (default 0: only images with no colour deviation);
 - at least one face has an age estimate (otherwise a minor cannot be ruled out; `--keep-no-face` overrides this);
-- no face has a bin in `--minor-bins` (default `0-2`, `3-9`, `10-19`), nor `p_minor >= --max-p-minor` (only if `e_age.csv` has a `p_minor` column; `e_age.py` does not write it at the moment).
+- no face has a bin in `--minor-bins` (default `0-2`, `3-9`, `10-19`), nor `p_minor >= --max-p-minor` (default 0.2). `p_minor` is written by `e_age.py` and is the summed probability of the minor bins, so a face the classifier is unsure about is also caught, not only when a minor bin is the top-1. If `e_age.csv` has no `p_minor` values (written by an older version), the filter warns and only uses the bins: re-run `e_age.py --overwrite`.
 
 With `--by-frame` a minor face also discards all the other rows of the same frame (the frame is the `frame_<number>` prefix of the file name). The results are `filtered/kept.csv` and `filtered/discarded.csv` (with the `reason`), inspected with `viewer_filter.ipynb`.
 

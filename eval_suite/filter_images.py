@@ -4,13 +4,14 @@ filter_images.py - keeps the colour images without minors: the last step of the 
 
 Inputs (all in --out, unless overridden):
   results.csv   merged table written by merge.py (needs the column color_dev_frac_in from stage A)
-  e_age.csv     age estimates written by e_age.py (columns file, age_bin, age_conf[, p_minor])
+  e_age.csv     age estimates written by e_age.py (columns file, age_bin, age_conf, p_minor)
 The two tables are linked on the file base name.
 
 A row is kept only if ALL these conditions are true:
   * color_dev_frac_in <= --max-color-dev (fraction of colour deviation)
   * at least one face has an age estimate (otherwise a minor cannot be ruled out)
-  * no face has a bin in --minor-bins, nor p_minor >= --max-p-minor
+  * no face has a bin in --minor-bins, nor p_minor >= --max-p-minor (probability of being a minor,
+    written by e_age.py: sum of the probabilities of the minor bins)
 With --by-frame a minor face also discards all the other rows of the same frame
 (frame = the "frame_<number>" prefix of the file name).
 
@@ -28,9 +29,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from common import AGE_CSV, FILTER_DIR, RESULTS_CSV
-
-DEFAULT_MINOR_BINS = ["0-2", "3-9", "10-19"]
+from common import AGE_CSV, FILTER_DIR, MINOR_BINS, RESULTS_CSV
 
 
 def frame_id(name: str) -> str:
@@ -48,9 +47,9 @@ def build_parser():
     ap.add_argument("--dest", type=Path, default=None, help=f"destination folder (default: <out>/{FILTER_DIR})")
     ap.add_argument("--max-color-dev", type=float, default=0.0,
                     help="discard if color_dev_frac_in > threshold (default 0: null values only)")
-    ap.add_argument("--minor-bins", nargs="+", default=DEFAULT_MINOR_BINS)
+    ap.add_argument("--minor-bins", nargs="+", default=MINOR_BINS)
     ap.add_argument("--max-p-minor", type=float, default=0.2,
-                    help="discard if p_minor >= threshold (ignored if the column is missing)")
+                    help="discard if p_minor >= threshold (ignored, with a warning, if e_age.csv has no p_minor)")
     ap.add_argument("--by-frame", action="store_true",
                     help="a minor discards the whole frame, not just the row")
     ap.add_argument("--keep-no-face", action="store_true",
@@ -75,7 +74,9 @@ def main(argv=None):
         sys.exit(f"{meta_path} has no color_dev_frac_in column: run stage A (coherence) and merge first.")
     ages["key"] = ages["file"].map(lambda p: Path(p).name)
     meta["key"] = meta["file"].map(lambda p: Path(p).name)
-    if "p_minor" not in ages:
+    if "p_minor" not in ages or ages["p_minor"].notna().sum() == 0:
+        print("[warn] e_age.csv has no p_minor values: minors are only detected through the age bin. "
+              "Re-run e_age.py --overwrite to get p_minor.")
         ages["p_minor"] = float("nan")
 
     # per-image state: worst case among the estimated faces (rows without a face have an empty age_bin)

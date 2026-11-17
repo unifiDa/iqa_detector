@@ -34,6 +34,7 @@ STAGE_CSV = {"a": "a_coherence.csv", "b": "b_quality.csv", "c": "c_prompt.csv", 
 D_JSON = "d_dataset.json"
 AGE_CSV = "e_age.csv"                          # one row per detected face, so it is NOT in STAGE_CSV / load_merged
 RESULTS_CSV = "results.csv"
+MINOR_BINS = ["0-2", "3-9", "10-19"]            # age bins counted as minors (e_age.py p_minor, filter_images.py)
 FILTER_DIR = "filtered"
 
 

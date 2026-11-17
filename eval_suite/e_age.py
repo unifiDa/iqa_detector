@@ -18,7 +18,8 @@ Three input modes (output always <out>/e_age.csv, ONE ROW PER FACE):
   --input P    stand-alone: P is an image or a folder, index.csv is not needed (add --crops if the
                images are already face crops). "file" is then the base name of each image.
 
-The output is an age BIN with its probability, not a number: for a numeric age use a regression model
+The output is an age BIN with its probability and p_minor (the summed probability of the minor bins,
+used by filter_images.py), not a number: for a numeric age use a regression model
 (e.g. MiVOLO) via --model, if compatible. Any Hugging Face `image-classification` model whose labels are
 age bins works (e.g. a fine-tuned SigLIP2).
 
@@ -40,14 +41,14 @@ import cv2
 import numpy as np
 import pandas as pd
 
-from common import AGE_CSV, IMG_EXT, load_index, resolve_device
+from common import AGE_CSV, IMG_EXT, MINOR_BINS, load_index, resolve_device
 
 YUNET_URL = (
     "https://github.com/opencv/opencv_zoo/raw/main/models/"
     "face_detection_yunet/face_detection_yunet_2023mar.onnx"
 )
 DEFAULT_MODEL = "nateraw/vit-age-classifier"
-COLUMNS = ["file", "image_path", "x1", "y1", "x2", "y2", "det_score", "age_bin", "age_conf"]
+COLUMNS = ["file", "image_path", "x1", "y1", "x2", "y2", "det_score", "age_bin", "age_conf", "p_minor"]
 ANNOTATED_DIR = "age_annotated"
 
 
@@ -76,14 +77,18 @@ def detect_faces(det: cv2.FaceDetectorYN, bgr: np.ndarray, margin: float):
     return out
 
 
-def predict(model, proc, device, crops):
-    """Top-1 (label, probability) for each PIL crop."""
+def predict(model, proc, device, crops, minor_bins):
+    """(top-1 label, its probability, p_minor) for each PIL crop. p_minor = sum of the probabilities of the
+    labels in minor_bins (NaN if the model has no such label)."""
     import torch
     with torch.inference_mode():
         inputs = proc(images=crops, return_tensors="pt").to(device)
         probs = model(**inputs).logits.softmax(-1).cpu()
     id2label = model.config.id2label
-    return [(id2label[int(p.argmax())], float(p.max())) for p in probs]
+    wanted = {b.replace(" ", "") for b in minor_bins}
+    minor_idx = [int(i) for i, lab in id2label.items() if str(lab).replace(" ", "") in wanted]
+    return [(id2label[int(p.argmax())], float(p.max()),
+             float(p[minor_idx].sum()) if minor_idx else float("nan")) for p in probs]
 
 
 def list_inputs(path: Path):
@@ -113,6 +118,8 @@ def build_parser():
     ap.add_argument("--crops", action="store_true",
                     help="inputs are face crops (no detection): crops/face of index.csv, or --input as is")
     ap.add_argument("--model", default=DEFAULT_MODEL, help="Hugging Face age-classification model")
+    ap.add_argument("--minor-bins", nargs="+", default=MINOR_BINS,
+                    help="age bins counted as minors, for p_minor (must match the model labels)")
     ap.add_argument("--yunet", type=Path, default=Path("models/yunet.onnx"))
     ap.add_argument("--det-score", type=float, default=0.7, help="minimum YuNet face score")
     ap.add_argument("--margin", type=float, default=0.15, help="margin around the face bbox (fraction)")
@@ -135,6 +142,9 @@ def main(argv=None):
     rows, done = [], set()
     if csv_path.exists() and not args.overwrite:
         prev = pd.read_csv(csv_path)
+        if "p_minor" not in prev:
+            raise SystemExit(f"{csv_path} has no p_minor column (written by an older version): "
+                             f"re-run with --overwrite to compute it.")
         rows, done = prev.to_dict("records"), set(prev["file"])
         print(f"[resume] {len(done)} images already present in {csv_path}")
 
@@ -150,6 +160,10 @@ def main(argv=None):
     device = resolve_device(args.device)
     proc = AutoImageProcessor.from_pretrained(args.model)
     model = AutoModelForImageClassification.from_pretrained(args.model).to(device).eval()
+    wanted = {b.replace(" ", "") for b in args.minor_bins}
+    if not any(str(l).replace(" ", "") in wanted for l in model.config.id2label.values()):
+        print(f"[warn] none of the model labels {list(model.config.id2label.values())} is in --minor-bins "
+              f"{args.minor_bins}: p_minor will be NaN.")
     detector = None if args.crops else get_yunet(args.yunet, args.det_score)
     draw = not args.crops and not args.no_draw
     if draw:
@@ -176,12 +190,12 @@ def main(argv=None):
                        for x1, y1, x2, y2, _ in boxes]
                 preds = []
                 for k in range(0, len(pil), args.batch):
-                    preds += predict(model, proc, device, pil[k:k + args.batch])
+                    preds += predict(model, proc, device, pil[k:k + args.batch], args.minor_bins)
 
-                for (x1, y1, x2, y2, s), (label, conf) in zip(boxes, preds):
+                for (x1, y1, x2, y2, s), (label, conf, p_minor) in zip(boxes, preds):
                     rows.append({"file": name, "image_path": str(path.resolve()),
                                  "x1": x1, "y1": y1, "x2": x2, "y2": y2, "det_score": round(s, 3),
-                                 "age_bin": label, "age_conf": round(conf, 4)})
+                                 "age_bin": label, "age_conf": round(conf, 4), "p_minor": round(p_minor, 4)})
                     if draw:
                         cv2.rectangle(bgr, (x1, y1), (x2, y2), (0, 255, 0), 2)
                         cv2.putText(bgr, f"{label} {conf:.0%}", (x1, max(15, y1 - 8)),
