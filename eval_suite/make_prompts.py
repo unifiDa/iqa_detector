@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
 """
-make_prompts.py - converte i JSON di prompt (uno per immagine originale) nel prompts.jsonl
-letto da c_prompt.py.
+make_prompts.py - converts the prompt JSON files (one per original image) into the prompts.jsonl
+read by c_prompt.py.
 
-Ogni JSON e' una lista di stringhe del tipo
+Each JSON is a list of strings such as
     "Rationale: ...\nReplace with: Snow-covered Fence Wall"
-Il prompt viene estratto ESATTAMENTE come nello script di inpainting FLUX: il testo dopo
-"Replace with: " (con lo spazio), senza togliere virgolette, cosi' CLIP/MPS valutano la stessa
-stringa che ha ricevuto FLUX. Lo script FLUX salva  {image_name}_{size}_{i % 5}_inpainted.png
-e, per via del "if i == 0: break", genera solo il primo prompt di ogni JSON: per questo di
-default si esporta solo i=0 (--all per esportarli tutti).
+The prompt is extracted EXACTLY as in the FLUX inpainting script: the text after
+"Replace with: " (with the space), without stripping quotes, so CLIP/MPS score the same
+string that FLUX received. The FLUX script saves  {image_name}_{size}_{i % 5}_inpainted.png
+and, because of the "if i == 0: break", only generates the first prompt of each JSON: that is why by
+default only i=0 is exported (--all exports them all).
 
-L'id di ogni riga si costruisce con --id-template, che puo' usare:
-    {name}  nome del JSON senza .json            es. Sony_DSC-W170_1_51977.JPG_large
-            (= {image_name}_{size} dello script FLUX)
-    {base}  {name} senza _large e senza estensione es. Sony_DSC-W170_1_51977
-    {i}     indice del prompt nella lista (0, 1, ...)
+The id of each row is built with --id-template, which can use:
+    {name}  name of the JSON without .json            e.g. Sony_DSC-W170_1_51977.JPG_large
+            (= {image_name}_{size} of the FLUX script)
+    {base}  {name} without _large and without extension e.g. Sony_DSC-W170_1_51977
+    {i}     index of the prompt in the list (0, 1, ...)
 
   python make_prompts.py --json-dir prompts_json/ --out prompts.jsonl
   python make_prompts.py --json-dir prompts_json/ --out prompts.jsonl --images res_d1/crops
@@ -31,7 +31,7 @@ IMG_EXT = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"}
 
 
 def extract_prompt(text: str):
-    """Stessa logica dello script FLUX: prompt_text[idx + len(marker):]."""
+    """Same logic as the FLUX script: prompt_text[idx + len(marker):]."""
     idx = text.find(MARKER)
     if idx == -1:
         return None
@@ -44,37 +44,37 @@ def base_of(name: str) -> str:
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="JSON di prompt -> prompts.jsonl per c_prompt.py",
+    ap = argparse.ArgumentParser(description="Prompt JSON files -> prompts.jsonl for c_prompt.py",
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     ap.add_argument("--json-dir", required=True, type=Path)
     ap.add_argument("--out", required=True, type=Path)
     ap.add_argument("--id-template", default="{name}_{i}_inpainted",
-                    help="nome file inpaintato senza estensione (FLUX usa i %% 5)")
+                    help="inpainted file name without extension (FLUX uses i %% 5)")
     ap.add_argument("--all", action="store_true",
-                    help="esporta tutti i prompt, non solo il primo (FLUX genera solo i=0)")
+                    help="export all the prompts, not just the first (FLUX only generates i=0)")
     ap.add_argument("--images", type=Path, default=None,
-                    help="cartella delle immagini inpaintate: controlla quali id hanno un'immagine")
+                    help="folder of the inpainted images: checks which ids have an image")
     args = ap.parse_args(argv)
 
     files = sorted(args.json_dir.glob("*.json"))
     if not files:
-        sys.exit(f"Nessun .json in {args.json_dir}")
+        sys.exit(f"No .json in {args.json_dir}")
 
     rows, bad = [], []
     for f in files:
         try:
             items = json.loads(f.read_text(encoding="utf-8"))
         except json.JSONDecodeError as e:
-            bad.append(f"{f.name}: JSON non valido ({e})")
+            bad.append(f"{f.name}: invalid JSON ({e})")
             continue
         if not isinstance(items, list):
-            bad.append(f"{f.name}: atteso una lista, trovato {type(items).__name__}")
+            bad.append(f"{f.name}: expected a list, found {type(items).__name__}")
             continue
         name = f.name[:-len(".json")]
         for i, text in enumerate(items if args.all else items[:1]):
             prompt = extract_prompt(text) if isinstance(text, str) else None
             if prompt is None:
-                bad.append(f"{f.name}[{i}]: 'Replace with:' non trovato")
+                bad.append(f"{f.name}[{i}]: 'Replace with:' not found")
                 continue
             rid = args.id_template.format(name=name, base=base_of(name), i=i % 5)
             rows.append({"record_id": rid, "prompt": prompt, "source": f.name, "index": i,
@@ -84,11 +84,11 @@ def main(argv=None):
     with args.out.open("w", encoding="utf-8") as fh:
         for r in rows:
             fh.write(json.dumps(r, ensure_ascii=False) + "\n")
-    print(f"Scritte {len(rows)} righe da {len(files)} JSON in {args.out}")
+    print(f"Wrote {len(rows)} rows from {len(files)} JSON files to {args.out}")
     for r in rows[:3]:
         print(f"  {r['record_id']}  ->  {r['prompt']}")
     if bad:
-        print(f"[warn] {len(bad)} elementi saltati:")
+        print(f"[warn] {len(bad)} items skipped:")
         for b in bad[:10]:
             print("  " + b)
 
@@ -96,12 +96,12 @@ def main(argv=None):
         stems = {p.stem for p in args.images.rglob("*") if p.suffix.lower() in IMG_EXT}
         ids = [r["record_id"] for r in rows]
         hit = [i for i in ids if i in stems or any(s.startswith(i) for s in stems)]
-        print(f"\nControllo immagini: {len(hit)}/{len(ids)} id trovano un'immagine in {args.images}")
+        print(f"\nImage check: {len(hit)}/{len(ids)} ids find an image in {args.images}")
         if len(hit) < len(ids):
             miss = [i for i in ids if i not in hit][:3]
-            print(f"  es. id senza immagine: {miss}")
-            print(f"  es. nomi immagine:     {sorted(stems)[:3]}")
-            print("  -> se i nomi non tornano, cambia --id-template")
+            print(f"  e.g. ids without an image: {miss}")
+            print(f"  e.g. image names:          {sorted(stems)[:3]}")
+            print("  -> if the names do not match, change --id-template")
 
 
 if __name__ == "__main__":

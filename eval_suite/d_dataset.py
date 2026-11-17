@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """
-d_dataset.py - D. metriche a livello di DATASET con clean-fid (non dicono nulla sulla singola immagine).
+d_dataset.py - D. DATASET-level metrics with clean-fid (they say nothing about a single image).
 
-  FID  Frechet Inception Distance tra le distribuzioni di feature Inception dei due insiemi.
-       Piu' basso = piu' simili. Instabile con meno di ~2048 immagini per insieme.
-  KID  Kernel Inception Distance: come FID ma non distorto con pochi campioni; preferibile sotto
-       qualche migliaio di immagini.
+  FID  Frechet Inception Distance between the Inception feature distributions of the two sets.
+       Lower = more similar. Unstable with fewer than ~2048 images per set.
+  KID  Kernel Inception Distance: like FID but unbiased with few samples; preferable below
+       a few thousand images.
 
-Confronta con un riferimento SENSATO: es. ritagli di volti reali dello stesso archivio
-(lanciando prepare.py anche sugli originali), non FFHQ a colori e in alta risoluzione.
+Compare against a SENSIBLE reference: e.g. crops of real faces from the same archive
+(by also running prepare.py on the originals), not colour, high-resolution FFHQ.
 
-I risultati si accumulano in <out>/d_dataset.json (una voce per coppia ritagli/riferimento;
-rilanciare con lo stesso riferimento sostituisce la voce).
+Results accumulate in <out>/d_dataset.json (one entry per crops/reference pair;
+re-running with the same reference replaces the entry).
 
   python d_dataset.py --out res_d1 --ref res_originali/crops/face
   python d_dataset.py --out res_d1 --ref res_d2/crops/face --kind face
@@ -34,18 +34,18 @@ def fid_kid(gen_dir: Path, ref_dir: Path, device, batch_size):
     res["kid"] = float(fid.compute_kid(str(gen_dir), str(ref_dir), **kw))
     res["fid"] = float(fid.compute_fid(str(gen_dir), str(ref_dir), **kw))
     if min(n_gen, n_ref) < 2048:
-        res["warning"] = ("FID poco affidabile con meno di ~2048 immagini per insieme "
-                          "(covarianza a 2048 dimensioni): preferisci il KID.")
+        res["warning"] = ("FID is unreliable with fewer than ~2048 images per set "
+                          "(2048-dimensional covariance): prefer KID.")
     return res
 
 
 def build_parser():
-    ap = argparse.ArgumentParser(description="D. FID / KID con clean-fid",
+    ap = argparse.ArgumentParser(description="D. FID / KID with clean-fid",
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    ap.add_argument("--out", required=True, type=Path, help="cartella creata da prepare.py")
-    ap.add_argument("--ref", required=True, type=Path, help="cartella di immagini di riferimento")
+    ap.add_argument("--out", required=True, type=Path, help="folder created by prepare.py")
+    ap.add_argument("--ref", required=True, type=Path, help="folder of reference images")
     ap.add_argument("--kind", choices=["face", "mask", "full"], default=None,
-                    help="quali ritagli confrontare (default: il tipo piu' frequente in index.csv)")
+                    help="which crops to compare (default: the most frequent kind in index.csv)")
     ap.add_argument("--batch", type=int, default=32)
     ap.add_argument("--device", default=None)
     return ap
@@ -59,10 +59,10 @@ def main(argv=None):
         kind = str(pd.read_csv(idx)["crop_kind"].value_counts().idxmax()) if idx.exists() else "face"
     gen_dir = args.out / "crops" / kind
     if not gen_dir.is_dir() or not list_images(gen_dir):
-        raise SystemExit(f"Nessun ritaglio in {gen_dir}")
+        raise SystemExit(f"No crops in {gen_dir}")
 
     device = resolve_device(args.device)
-    print(f"[clean-fid] {gen_dir} contro {args.ref} ({device}) ...")
+    print(f"[clean-fid] {gen_dir} against {args.ref} ({device}) ...")
     res = dict(kind=kind, **fid_kid(gen_dir, args.ref, device, args.batch))
     print(json.dumps(res, indent=2, ensure_ascii=False))
 
@@ -71,7 +71,7 @@ def main(argv=None):
     entries = [e for e in entries if not (e.get("gen_dir") == res["gen_dir"] and e.get("ref_dir") == res["ref_dir"])]
     entries.append(res)
     path.write_text(json.dumps(entries, indent=2, ensure_ascii=False))
-    print(f"Salvato {path}")
+    print(f"Saved {path}")
 
 
 if __name__ == "__main__":

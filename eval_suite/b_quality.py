@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 """
-b_quality.py - B. qualita' percepita del ritaglio (no-reference, pyiqa).
+b_quality.py - B. perceived quality of the crop (no-reference, pyiqa).
 
-  topiq_nr-face  qualita' di un VOLTO, appresa da giudizi umani. 0-1, piu' alto = meglio.
-                 Solo sui ritagli crop_kind=face, altrimenti vuoto per costruzione.
-  musiq          qualita' generale multi-scala (rumore, sfocatura, compressione). ~0-100.
-  clipiqa        quanto l'immagine somiglia a una "foto buona" per CLIP, senza prompt. 0-1.
-  (anche brisque, niqe, maniqa: per brisque e niqe piu' basso = meglio)
+  topiq_nr-face  quality of a FACE, learned from human judgements. 0-1, higher = better.
+                 Only on crop_kind=face crops, empty by construction otherwise.
+  musiq          general multi-scale quality (noise, blur, compression). ~0-100.
+  clipiqa        how much the image looks like a "good photo" to CLIP, without a prompt. 0-1.
+  (also brisque, niqe, maniqa: for brisque and niqe lower = better)
 
-Sono no-reference: confronta immagini tra loro e a parita' di dimensione del volto (src_px, upscale);
-i valori assoluti su materiale d'archivio sono bassi per natura.
+They are no-reference: compare images with each other and at equal face size (src_px, upscale);
+absolute values on archive material are low by nature.
 
   python b_quality.py --out res_d1
-  python b_quality.py --out res_d1 --metrics musiq                 # aggiunge/completa solo musiq
+  python b_quality.py --out res_d1 --metrics musiq                 # adds/completes musiq only
 """
 import argparse
 from pathlib import Path
@@ -32,11 +32,11 @@ def to_tensor(bgr, device):
 
 
 def build_parser():
-    ap = argparse.ArgumentParser(description="B. qualita' del ritaglio (pyiqa)",
+    ap = argparse.ArgumentParser(description="B. crop quality (pyiqa)",
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    ap.add_argument("--out", required=True, type=Path, help="cartella creata da prepare.py")
+    ap.add_argument("--out", required=True, type=Path, help="folder created by prepare.py")
     ap.add_argument("--metrics", nargs="+", choices=METRICS, default=METRICS)#["topiq_nr-face", "musiq", "clipiqa"])
-    ap.add_argument("--device", default=None, help="cpu/cuda (default: cuda se disponibile)")
+    ap.add_argument("--device", default=None, help="cpu/cuda (default: cuda if available)")
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--overwrite", action="store_true")
     ap.add_argument("--save-every", type=int, default=25)
@@ -51,7 +51,7 @@ def main(argv=None):
     device = resolve_device(args.device)
     index = load_index(args.out)
     table = StageTable(args.out / STAGE_CSV["b"], args.overwrite, args.save_every)
-    print(f"device: {device}; metriche: {args.metrics}")
+    print(f"device: {device}; metrics: {args.metrics}")
     models = {n: pyiqa.create_metric(n, device=device) for n in args.metrics}
 
     def score(name, crop, row):
@@ -62,7 +62,7 @@ def main(argv=None):
         return name not in FACE_ONLY or row.get("crop_kind") == "face"
 
     run_crop_metrics(args.out, index, table, {n: n for n in args.metrics}, score, applicable, args.limit)
-    print(f"\nSalvato {table.path}")
+    print(f"\nSaved {table.path}")
     describe(table.df(), args.metrics)
 
 

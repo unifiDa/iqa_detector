@@ -1,27 +1,27 @@
 #!/usr/bin/env python3
 """
-check_padding.py - cerca PIXEL REPLICATI sui bordi (le strisce uniformi in verticale/orizzontale che si vedono
-quando un'immagine e' stata estesa copiando l'ultima riga o colonna).
+check_padding.py - looks for REPLICATED PIXELS on the borders (the uniform vertical/horizontal stripes that
+appear when an image has been extended by copying the last row or column).
 
-Due controlli, separati:
+Two separate checks:
 
-  FRAME   (frame_*)  euristica sul frame originale (image_path in index.csv). Un lato ha una banda se le prime
-          righe/colonne dal bordo sono quasi uguali alla riga/colonna di bordo (differenza media < --eps livelli
-          di grigio) E la riga di bordo ha texture (dev. std > --min-std; altrimenti e' una banda uniforme,
-          letterbox, che e' un'altra cosa) E lo spessore supera --min-frac del lato.
-          Colonne: frame_<lato>_pad (px), frame_<lato>_pad_frac, frame_pad_sides (lati con banda).
-          La banda e' gia' nell'immagine data in pasto allo strumento (padding del generatore, ecc.): falsa
-          anche le metriche di coerenza, che lavorano sul frame con la maschera. Flag "pixel_replicati".
+  FRAME   (frame_*)  heuristic on the original frame (image_path in index.csv). A side has a band if the first
+          rows/columns from the border are almost equal to the border row/column (mean difference < --eps grey
+          levels) AND the border row has texture (std dev > --min-std; otherwise it is a uniform band,
+          letterbox, which is something else) AND the thickness exceeds --min-frac of the side.
+          Columns: frame_<side>_pad (px), frame_<side>_pad_frac, frame_pad_sides (sides with a band).
+          The band is already in the image fed to the tool (generator padding, etc.): it also biases the
+          coherence metrics, which work on the frame with the mask. Flag "edge padding".
 
-  RITAGLIO (crop_outside_sides)  verifica ESATTA, senza euristiche: lati su cui il box del ritaglio
-          (crop_x0..y1 in index.csv) esce dal frame. Con il common.py corretto e' sempre vuoto; se non lo e', quei
-          ritagli hanno pixel replicati certi (prodotti con il vecchio common.py) e vanno rifatti. Flag
-          "ritaglio_con_padding".
-          Non si controlla il ritaglio con l'euristica del frame: confonde contenuto verticale (pareti, sfondi
-          scuri) e interpolazione con bande replicate.
+  CROP (crop_outside_sides)  EXACT check, no heuristics: sides on which the crop box
+          (crop_x0..y1 in index.csv) goes outside the frame. With the fixed common.py it is always empty; if it is
+          not, those crops have certain replicated pixels (produced with the old common.py) and must be redone.
+          Flag "padded crop".
+          The crop is not checked with the frame heuristic: it confuses vertical content (walls, dark
+          backgrounds) and interpolation with replicated bands.
 
-Scrive <out>/padding.csv (colonna "file"); load_merged (common.py) lo unisce agli altri risultati e aggiunge i
-flag a "flags", quindi compaiono in results.csv, summary.json e nel viewer.
+Writes <out>/padding.csv ("file" column); load_merged (common.py) merges it with the other results and adds the
+flags to "flags", so they appear in results.csv, summary.json and in the viewer.
 
   python check_padding.py --out res_d1
   python check_padding.py --out res_d1 --min-frac 0.02 --eps 2.0
@@ -39,13 +39,13 @@ SIDES = ("top", "bottom", "left", "right")
 
 
 def band_thickness(gray, eps, min_std):
-    """Righe consecutive dal bordo superiore quasi uguali alla riga di bordo (0 se la riga di bordo e' piatta)."""
+    """Consecutive rows from the top border almost equal to the border row (0 if the border row is flat)."""
     first = gray[0]
     if float(first.std()) < min_std:
         return 0
-    diff = np.abs(gray - first[None, :]).mean(axis=1)          # differenza media di ogni riga dalla riga di bordo
+    diff = np.abs(gray - first[None, :]).mean(axis=1)          # mean difference of every row from the border row
     bad = np.flatnonzero(diff >= eps)
-    return int(bad[0]) if len(bad) else gray.shape[0]          # prima riga che si discosta = spessore
+    return int(bad[0]) if len(bad) else gray.shape[0]          # first row that departs = thickness
 
 
 def padding(bgr, eps, min_std):
@@ -54,18 +54,18 @@ def padding(bgr, eps, min_std):
     out = {}
     for side, v in views.items():
         t = band_thickness(np.ascontiguousarray(v), eps, min_std)
-        out[f"{side}_pad"] = t if t > 1 else 0                  # 1 = solo la riga di bordo stessa
+        out[f"{side}_pad"] = t if t > 1 else 0                  # 1 = only the border row itself
         out[f"{side}_pad_frac"] = (t if t > 1 else 0) / v.shape[0]
     return out
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="Cerca pixel replicati sui bordi",
+    ap = argparse.ArgumentParser(description="Looks for replicated pixels on the borders",
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    ap.add_argument("--out", required=True, type=Path, help="cartella creata da prepare.py")
-    ap.add_argument("--eps", type=float, default=1.5, help="differenza media (livelli di grigio) per dire 'uguale'")
-    ap.add_argument("--min-std", type=float, default=3.0, help="texture minima della riga di bordo (esclude le bande uniformi)")
-    ap.add_argument("--min-frac", type=float, default=0.03, help="spessore minimo (frazione del lato del frame) per la banda")
+    ap.add_argument("--out", required=True, type=Path, help="folder created by prepare.py")
+    ap.add_argument("--eps", type=float, default=1.5, help="mean difference (grey levels) to call two rows 'equal'")
+    ap.add_argument("--min-std", type=float, default=3.0, help="minimum texture of the border row (excludes uniform bands)")
+    ap.add_argument("--min-frac", type=float, default=0.03, help="minimum thickness (fraction of the frame side) for the band")
     ap.add_argument("--limit", type=int, default=None)
     args = ap.parse_args(argv)
 
@@ -90,18 +90,18 @@ def main(argv=None):
     df = pd.DataFrame(rows)
     path = args.out / STAGE_CSV["p"]
     df.to_csv(path, index=False)
-    print(f"Salvato {path} ({len(df)} immagini)")
+    print(f"Saved {path} ({len(df)} images)")
     if "frame_pad_sides" in df:
         has = df["frame_pad_sides"].fillna("") != ""
-        print(f"frame con banda replicata (>= {args.min_frac:.0%} del lato): {int(has.sum())}/{len(df)}  -> flag edge padding")
+        print(f"frames with a replicated band (>= {args.min_frac:.0%} of the side): {int(has.sum())}/{len(df)}  -> flag edge padding")
         if has.any():
-            print("   lati:", df.loc[has, "frame_pad_sides"].str.split(",").explode().value_counts().to_dict())
+            print("   sides:", df.loc[has, "frame_pad_sides"].str.split(",").explode().value_counts().to_dict())
     if "crop_outside_sides" in df:
         out = df["crop_outside_sides"].fillna("") != ""
-        print(f"ritagli con box FUORI dal frame (padding certo): {int(out.sum())}/{len(df)}  -> flag padded crop"
+        print(f"crops with the box OUTSIDE the frame (certain padding): {int(out.sum())}/{len(df)}  -> flag padded crop"
               + ("" if out.any() else "  (ok)"))
         if out.any():
-            print("   i ritagli sono vecchi: cancella --out e rifai prepare con il common.py corretto")
+            print("   the crops are old: delete --out and re-run prepare with the fixed common.py")
 
 
 if __name__ == "__main__":

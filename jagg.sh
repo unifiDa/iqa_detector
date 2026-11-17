@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# jagg.sh - pipeline di valutazione sul dataset btb-dresden inpaintato con jagg.
+# jagg.sh - evaluation pipeline on the btb-dresden dataset inpainted with jagg.
 #
-#   ./jagg.sh                         tutti i passi, nell'ordine
-#   ./jagg.sh prompt mps merge        solo i passi indicati (sempre nell'ordine della pipeline)
+#   ./jagg.sh                         all the steps, in order
+#   ./jagg.sh prompt mps merge        only the listed steps (always in pipeline order)
 #
-# Passi: prepare, coherence, padding, quality, prompts, prompt, mps, merge
-# Va messo nella radice del progetto (la cartella che contiene pixi.toml e eval_suite/).
+# Steps: prepare, coherence, padding, quality, prompts, prompt, mps, merge
+# Keep it in the project root (the folder that contains pixi.toml and eval_suite/).
 set -euo pipefail
 cd "$(dirname "$0")"
 
-# ---- percorsi ---------------------------------------------------------------------------------
+# ---- paths ---------------------------------------------------------------------------------
 NAME=jagg
 DATA=/home/dasara/Research/btb-dresden-all
 INPAINTS=$DATA/jagg_inpaint/
@@ -25,28 +25,28 @@ MPS_REPO=$CODE/MPS/
 DEVICE=cuda:0
 QUALITY_METRICS=(musiq clipiqa brisque niqe maniqa)
 
-# ---- passi ------------------------------------------------------------------------------------
-# ritagli sulla maschera (schema mask_<immagine>_<large|medium|small>.png)
+# ---- steps ------------------------------------------------------------------------------------
+# crops on the mask (scheme mask_<image>_<large|medium|small>.png)
 step_prepare() {
     pixi run -e gpu prepare_generic --images "$INPAINTS" --out "$OUT" --masks "$MASKS"
 }
 
-# A. coerenza regione/contorno
+# A. region/surroundings coherence
 step_coherence() {
     pixi run coherence --out "$OUT"
 }
 
-# pixel replicati nel frame e ritagli fuori dal frame (deve dare 0)
+# replicated pixels in the frame and crops outside the frame (must be 0)
 step_padding() {
     pixi run padding --out "$OUT"
 }
 
-# B. qualita' no-reference
+# B. no-reference quality
 step_quality() {
     pixi run -e gpu quality --device "$DEVICE" --metrics "${QUALITY_METRICS[@]}" --out "$OUT"
 }
 
-# JSON di prompt -> prompts.jsonl (id = nome del file inpaintato senza estensione)
+# prompt JSON -> prompts.jsonl (id = inpainted file name without extension)
 step_prompts() {
     mkdir -p "$OUT"
     pixi run make_prompts --json-dir "$PROMPT_JSON" --out "$PROMPTS" --images "$INPAINTS"
@@ -57,26 +57,26 @@ step_prompt() {
     pixi run -e gpu prompt --device "$DEVICE" --out "$OUT" --prompts "$PROMPTS"
 }
 
-# C. MPS score (ambiente dedicato, transformers 4.27.3); completa c_prompt.csv senza rifare CLIP
+# C. MPS score (dedicated environment, transformers 4.27.3); completes c_prompt.csv without redoing CLIP
 step_mps() {
     pixi run -e mps mps "$OUT" "$PROMPTS" "$MPS_CKPT" "$MPS_REPO"
 }
 
-# unisce tutto in results.csv e summary.json
+# merges everything into results.csv and summary.json
 step_merge() {
     pixi run merge --out "$OUT" --name "$NAME"
 }
 
-# ---- controlli --------------------------------------------------------------------------------
-need() { [ -e "$1" ] || { echo "non trovato: $1  (controlla i percorsi in cima a $0)" >&2; exit 1; }; }
+# ---- checks --------------------------------------------------------------------------------
+need() { [ -e "$1" ] || { echo "not found: $1  (check the paths at the top of $0)" >&2; exit 1; }; }
 
-# ---- esecuzione -------------------------------------------------------------------------------
+# ---- run -------------------------------------------------------------------------------
 ALL=(prepare coherence padding quality prompts prompt mps merge)
 if [ "$#" -eq 0 ]; then
     WANTED=("${ALL[@]}")
 else
     for s in "$@"; do
-        case " ${ALL[*]} " in *" $s "*) ;; *) echo "passo sconosciuto: $s (validi: ${ALL[*]})" >&2; exit 2 ;; esac
+        case " ${ALL[*]} " in *" $s "*) ;; *) echo "unknown step: $s (valid: ${ALL[*]})" >&2; exit 2 ;; esac
     done
     WANTED=("$@")
 fi

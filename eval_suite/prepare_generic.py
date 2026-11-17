@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
 """
-prepare_generic.py - passo 0 per inpainting GENERICO (non solo volti): niente rilevamento volti.
+prepare_generic.py - step 0 for GENERIC inpainting (not only faces): no face detection.
 
-  - MASCHERA (nome: mask_<nome fino a large|medium|small>.<ext>, vedi find_mask_generic in common.py):
-    e' la regione da valutare (region_src=mask). Senza maschera la regione e' l'immagine
-    intera (region_src=none) e il ritaglio e' l'immagine intera;
-  - RITAGLIO (crop_kind): mask = quadrato 512x512 attorno al bbox della maschera, full = immagine intera
-    (lato lungo <= 768). Mai "face".
+  - MASK (name: mask_<name up to large|medium|small>.<ext>, see find_mask_generic in common.py):
+    it is the region to evaluate (region_src=mask). Without a mask the region is the whole
+    image (region_src=none) and the crop is the whole image;
+  - CROP (crop_kind): mask = 512x512 square around the mask bbox, full = whole image
+    (long side <= 768). Never "face".
 
-Scrive lo stesso <out>/index.csv e <out>/crops/<crop_kind>/<nome>.png di prepare.py, con le colonne
-del volto (n_faces, face_found, det_score, face_in_mask, face_x0..y1, face_px) vuote (NaN), cosi' gli
-script successivi funzionano senza modifiche. Richiede lo stesso common.py di prepare.py.
+Writes the same <out>/index.csv and <out>/crops/<crop_kind>/<name>.png as prepare.py, with the face
+columns (n_faces, face_found, det_score, face_in_mask, face_x0..y1, face_px) empty (NaN), so the
+following scripts work unchanged. Needs the same common.py as prepare.py.
 
   python prepare_generic.py --images imgs/ --masks masks/ --out res_g1
-  python prepare_generic.py --images imgs/ --masks masks/ --out res_g1 --invert      # nero = zona modificata
-  python prepare_generic.py --images imgs2/ --out res_g2                  # senza maschere: tutta l'immagine
+  python prepare_generic.py --images imgs/ --masks masks/ --out res_g1 --invert      # black = edited area
+  python prepare_generic.py --images imgs2/ --out res_g2                  # without masks: whole image
   python prepare_generic.py --images imgs/ --masks masks/ --out res_g3 --crop full
 """
 import argparse
@@ -38,14 +38,14 @@ def build_parser():
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     ap.add_argument("--images", required=True, type=Path)
     ap.add_argument("--out", required=True, type=Path)
-    ap.add_argument("--masks", type=Path, default=None, help="cartella delle maschere (consigliata)")
-    ap.add_argument("--invert", action="store_true", help="maschera con nero = zona modificata")
+    ap.add_argument("--masks", type=Path, default=None, help="mask folder (recommended)")
+    ap.add_argument("--invert", action="store_true", help="mask with black = edited area")
     ap.add_argument("--crop", choices=["auto", "full"], default="auto",
-                    help="auto: bbox della maschera (o intera se manca); full: sempre l'immagine intera")
+                    help="auto: mask bbox (or whole image if missing); full: always the whole image")
     ap.add_argument("--min-area-frac", type=float, default=0.0,
-                    help="maschere con area/immagine sotto questa soglia vengono trattate come assenti")
-    ap.add_argument("--limit", type=int, default=None, help="al massimo N nuove immagini")
-    ap.add_argument("--overwrite", action="store_true", help="ricalcola tutto (default: riprende)")
+                    help="masks with area/image below this threshold are treated as absent")
+    ap.add_argument("--limit", type=int, default=None, help="at most N new images")
+    ap.add_argument("--overwrite", action="store_true", help="recompute everything (default: resume)")
     ap.add_argument("--save-every", type=int, default=10)
     return ap
 
@@ -60,14 +60,14 @@ def main(argv=None):
     files = [p for p in list_images(args.images) if table.get(p.name) is None]
     if args.limit is not None:
         files = files[:args.limit]
-    print(f"{len(files)} immagini nuove da preparare")
+    print(f"{len(files)} new images to prepare")
 
     errors = no_mask = 0
     for i, path in enumerate(files, 1):
         try:
             bgr = cv2.imread(str(path), cv2.IMREAD_COLOR)
             if bgr is None:
-                print(f"[skip] {path.name}: immagine illeggibile")
+                print(f"[skip] {path.name}: unreadable image")
                 continue
             h, w = bgr.shape[:2]
 
@@ -81,7 +81,7 @@ def main(argv=None):
                     mask, no_mask = None, no_mask + 1
 
             region_src = "mask" if mask is not None else "none"
-            # fbox=None: choose_crop ricade su maschera > intera
+            # fbox=None: choose_crop falls back to mask > whole image
             crop, kind, cbox, src_px, scale = choose_crop(bgr, None, mask_box, args.crop)
             crop_file = Path("crops") / kind / f"{path.stem}.png"
             (out / crop_file).parent.mkdir(parents=True, exist_ok=True)
@@ -102,18 +102,18 @@ def main(argv=None):
             print(f"[{i}/{len(files)}] {path.name}  {kind}/{region_src}")
         except Exception as e:  # noqa: BLE001
             errors += 1
-            print(f"[errore] {path.name}: {type(e).__name__}: {e}")
+            print(f"[error] {path.name}: {type(e).__name__}: {e}")
             if errors == 1:
                 traceback.print_exc()
 
     table.save()
     df = table.df()
     if no_mask:
-        print(f"[info] {no_mask} immagini senza maschera valida: regione = immagine intera")
+        print(f"[info] {no_mask} images without a valid mask: region = whole image")
     if errors:
-        print(f"[info] {errors} immagini saltate per errore")
+        print(f"[info] {errors} images skipped because of errors")
     if not df.empty:
-        print(f"\nSalvato {out / INDEX_CSV} ({len(df)} immagini)")
+        print(f"\nSaved {out / INDEX_CSV} ({len(df)} images)")
         print("crop_kind:", df["crop_kind"].value_counts().to_dict())
         print("region_src:", df["region_src"].value_counts().to_dict())
 

@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
 """
-prepare.py - passo 0: per ogni immagine trova la regione da valutare e salva il ritaglio.
+prepare.py - step 0: for every image finds the region to evaluate and saves the crop.
 
-  - MASCHERA opzionale: se c'e', e' la regione (region_src=mask);
-  - VOLTO opzionale (insightface): con maschera si sceglie il volto con piu' area dentro la maschera,
-    senza maschera il volto piu' grande; se manca la maschera la regione e' l'ellisse del volto
+  - optional MASK: if present, it is the region (region_src=mask);
+  - optional FACE (insightface): with a mask the face with the largest area inside the mask is chosen,
+    without a mask the largest face; if the mask is missing the region is the face ellipse
     (region_src=face);
-  - RITAGLIO (crop_kind): face = quadrato attorno al volto, mask = quadrato attorno al bbox della
-    maschera, full = immagine intera (lato lungo <= 768). I quadrati sono 512x512.
+  - CROP (crop_kind): face = square around the face, mask = square around the mask bbox,
+    full = whole image (long side <= 768). The squares are 512x512.
 
-Scrive <out>/index.csv e <out>/crops/<crop_kind>/<nome>.png. Tutti gli altri script leggono solo questi.
-Colonne utili: image_path, mask_path, face_x0..y1, mask_x0..y1, crop_x0..y1 (box del ritaglio in
-coordinate dell'immagine originale), src_px (lato della regione in px), upscale (512 / lato del ritaglio).
+Writes <out>/index.csv and <out>/crops/<crop_kind>/<name>.png. All the other scripts only read these.
+Useful columns: image_path, mask_path, face_x0..y1, mask_x0..y1, crop_x0..y1 (crop box in
+coordinates of the original image), src_px (side of the region in px), upscale (512 / crop side).
 
   python prepare.py --images imgs/ --masks masks/ --out res_d1
-  python prepare.py --images imgs2/ --out res_d2                  # senza maschere
+  python prepare.py --images imgs2/ --out res_d2                  # without masks
   python prepare.py --images imgs3/ --out res_d3 --crop full --no-face-det
 """
 import argparse
@@ -27,14 +27,14 @@ from common import (VERSION, INDEX_CSV, StageTable, bbox_of, choose_crop, find_m
 
 
 def onnx_providers(use_gpu):
-    """Provider onnxruntime da usare. Con onnxruntime-gpu le librerie CUDA/cuDNN 12 vengono prese dai
-    pacchetti nvidia-* installati insieme a torch (preload_dlls, onnxruntime >= 1.21)."""
+    """onnxruntime providers to use. With onnxruntime-gpu the CUDA/cuDNN 12 libraries are taken from the
+    nvidia-* packages installed together with torch (preload_dlls, onnxruntime >= 1.21)."""
     import onnxruntime as ort
     available = ort.get_available_providers()
     if use_gpu and "CUDAExecutionProvider" in available:
         try:
             ort.preload_dlls()
-        except Exception:  # noqa: BLE001  (versioni vecchie o librerie gia' nel sistema)
+        except Exception:  # noqa: BLE001  (old versions or libraries already on the system)
             pass
         return ["CUDAExecutionProvider", "CPUExecutionProvider"]
     return ["CPUExecutionProvider"]
@@ -46,15 +46,15 @@ def load_face_detector(det_thresh, use_gpu=True):
         providers = onnx_providers(use_gpu)
         app = FaceAnalysis(name="buffalo_l", allowed_modules=["detection"], providers=providers)
         app.prepare(ctx_id=0 if providers[0].startswith("CUDA") else -1,
-                    det_size=(640, 640), det_thresh=det_thresh)   # soglia bassa: volti piccoli/sgranati
+                    det_size=(640, 640), det_thresh=det_thresh)   # low threshold: small/grainy faces
         active = app.models["detection"].session.get_providers()
-        print(f"[face-det] insightface su {active[0]}")
+        print(f"[face-det] insightface on {active[0]}")
         if use_gpu and providers[0].startswith("CUDA") and not active[0].startswith("CUDA"):
-            print("[warn] CUDA richiesto ma onnxruntime e' ricaduto sulla CPU (librerie CUDA 12/cuDNN 9 non "
-                  "trovate o GPU non supportata): il rilevamento funziona lo stesso, solo piu' lento.")
+            print("[warn] CUDA requested but onnxruntime fell back to the CPU (CUDA 12/cuDNN 9 libraries not "
+                  "found or GPU not supported): detection still works, only slower.")
         return app
     except Exception as e:  # noqa: BLE001
-        print(f"[warn] insightface non disponibile ({type(e).__name__}: {e}): niente rilevamento volti.")
+        print(f"[warn] insightface not available ({type(e).__name__}: {e}): no face detection.")
         return None
 
 
@@ -63,7 +63,7 @@ def detect_faces(app, bgr):
 
 
 def overlap_in_mask(face_box, mask_box):
-    """Quota dell'area del volto che cade dentro il bbox della maschera (0-1)."""
+    """Fraction of the face area that falls inside the mask bbox (0-1)."""
     ix0, iy0 = max(face_box[0], mask_box[0]), max(face_box[1], mask_box[1])
     ix1, iy1 = min(face_box[2], mask_box[2]), min(face_box[3], mask_box[3])
     inter = max(0.0, ix1 - ix0) * max(0.0, iy1 - iy0)
@@ -72,7 +72,7 @@ def overlap_in_mask(face_box, mask_box):
 
 
 def pick_face(faces, mask_box, min_overlap):
-    """Ritorna (bbox, det_score, quota_in_maschera); bbox None se nessun volto adatto."""
+    """Returns (bbox, det_score, fraction_in_mask); bbox None if no suitable face."""
     nan = float("nan")
     if mask_box is not None:
         cands = [(overlap_in_mask(b, mask_box), s, b) for b, s in faces]
@@ -97,19 +97,19 @@ def build_parser():
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     ap.add_argument("--images", required=True, type=Path)
     ap.add_argument("--out", required=True, type=Path)
-    ap.add_argument("--masks", type=Path, default=None, help="cartella delle maschere (opzionale)")
+    ap.add_argument("--masks", type=Path, default=None, help="mask folder (optional)")
     ap.add_argument("--mask-template", default="{prefix}mask",
-                    help="nome della maschera (senza estensione); campi {prefix} e {stem}")
-    ap.add_argument("--invert", action="store_true", help="maschera con nero = zona modificata")
-    ap.add_argument("--no-face-det", action="store_true", help="salta insightface")
+                    help="mask name (without extension); fields {prefix} and {stem}")
+    ap.add_argument("--invert", action="store_true", help="mask with black = edited area")
+    ap.add_argument("--no-face-det", action="store_true", help="skip insightface")
     ap.add_argument("--det-thresh", type=float, default=0.3)
-    ap.add_argument("--cpu", action="store_true", help="rilevamento volti su CPU anche se c'e' la GPU")
+    ap.add_argument("--cpu", action="store_true", help="face detection on CPU even if a GPU is available")
     ap.add_argument("--min-overlap", type=float, default=0.5,
-                    help="quota minima del volto rilevato dentro la maschera (solo con maschera)")
+                    help="minimum fraction of the detected face inside the mask (mask only)")
     ap.add_argument("--crop", choices=["auto", "full"], default="auto",
-                    help="auto: volto > maschera > intera; full: sempre l'immagine intera")
-    ap.add_argument("--limit", type=int, default=None, help="al massimo N nuove immagini")
-    ap.add_argument("--overwrite", action="store_true", help="ricalcola tutto (default: riprende)")
+                    help="auto: face > mask > whole image; full: always the whole image")
+    ap.add_argument("--limit", type=int, default=None, help="at most N new images")
+    ap.add_argument("--overwrite", action="store_true", help="recompute everything (default: resume)")
     ap.add_argument("--save-every", type=int, default=10)
     return ap
 
@@ -124,7 +124,7 @@ def main(argv=None):
     files = [p for p in list_images(args.images) if table.get(p.name) is None]
     if args.limit is not None:
         files = files[:args.limit]
-    print(f"{len(files)} immagini nuove da preparare")
+    print(f"{len(files)} new images to prepare")
     detector = load_face_detector(args.det_thresh, not args.cpu) if files and not args.no_face_det else None
 
     errors = no_mask = 0
@@ -132,7 +132,7 @@ def main(argv=None):
         try:
             bgr = cv2.imread(str(path), cv2.IMREAD_COLOR)
             if bgr is None:
-                print(f"[skip] {path.name}: immagine illeggibile")
+                print(f"[skip] {path.name}: unreadable image")
                 continue
             h, w = bgr.shape[:2]
 
@@ -172,18 +172,18 @@ def main(argv=None):
             print(f"[{i}/{len(files)}] {path.name}  {kind}/{region_src}")
         except Exception as e:  # noqa: BLE001
             errors += 1
-            print(f"[errore] {path.name}: {type(e).__name__}: {e}")
+            print(f"[error] {path.name}: {type(e).__name__}: {e}")
             if errors == 1:
                 traceback.print_exc()
 
     table.save()
     df = table.df()
     if args.masks and no_mask:
-        print(f"[info] {no_mask} immagini senza maschera: regione dal volto o nessuna")
+        print(f"[info] {no_mask} images without a mask: region from the face or none")
     if errors:
-        print(f"[info] {errors} immagini saltate per errore")
+        print(f"[info] {errors} images skipped because of errors")
     if not df.empty:
-        print(f"\nSalvato {out / INDEX_CSV} ({len(df)} immagini)")
+        print(f"\nSaved {out / INDEX_CSV} ({len(df)} images)")
         print("crop_kind:", df["crop_kind"].value_counts().to_dict())
         print("region_src:", df["region_src"].value_counts().to_dict())
 
