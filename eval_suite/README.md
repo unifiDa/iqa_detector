@@ -1,159 +1,191 @@
 # eval_suite
 
-`eval_images.py` diviso per componente. Tutti gli script scrivono nella stessa cartella `--out` e sono collegati dalla colonna `file`.
+The evaluation pipeline, split by component. Every script writes into the same `--out` folder and the tables are linked by the `file` column.
 
-| script | cosa fa | scrive | dipendenze | GPU |
+| script | what it does | writes | dependencies | GPU |
 |---|---|---|---|---|
-| `prepare.py` | passo 0: maschera, volto (insightface), ritaglio 512 px | `index.csv`, `crops/<kind>/` | opencv, insightface (opz.) | sì (onnxruntime) |
-| `a_coherence.py` | **A** sfocatura, tinta Lab, bordo, flag | `a_coherence.csv` | opencv | no, non serve |
-| `b_quality.py` | **B** topiq_nr-face, musiq, clipiqa (anche brisque, niqe, maniqa) | `b_quality.csv` | pyiqa, torch | sì |
-| `c_prompt.py` | **C** clip_score, mps_score | `c_prompt.csv` | transformers, torch; MPS: transformers 4.27.3 + repo MPS | sì |
-| `d_dataset.py` | **D** FID / KID | `d_dataset.json` | clean-fid | sì |
-| `merge.py` | unisce tutto | `results.csv`, `summary.json` | pandas | no |
-| `gpu_check.py` | verifica che torch e onnxruntime usino la GPU | — | torch, onnxruntime | — |
-| `viewer.ipynb` | ritagli ordinati per metrica | — | matplotlib, ipywidgets (opz.) | no |
+| `prepare.py` | step 0: mask, face (insightface), 512 px crop | `index.csv`, `crops/<kind>/` | opencv, insightface (opt.) | yes (onnxruntime) |
+| `prepare_generic.py` | step 0 for generic inpainting: mask only, no face detection | `index.csv`, `crops/<kind>/` | opencv | no |
+| `make_prompts.py` | prompt JSON files -> `prompts.jsonl` | `prompts.jsonl` | — | no |
+| `a_coherence.py` | **A** blur, Lab tint, seam, flags | `a_coherence.csv` | opencv | no, not needed |
+| `check_padding.py` | replicated pixels in the frame, crops outside the frame (flags for merge) | `padding.csv` | opencv | no |
+| `b_quality.py` | **B** topiq_nr-face, musiq, clipiqa (also brisque, niqe, maniqa) | `b_quality.csv` | pyiqa, torch | yes |
+| `c_prompt.py` | **C** clip_score, mps_score | `c_prompt.csv` | transformers, torch; MPS: transformers 4.27.3 + MPS repo | yes |
+| `d_dataset.py` | **D** FID / KID | `d_dataset.json` | clean-fid | yes |
+| `e_age.py` | **E** age of the faces (YuNet + Hugging Face ViT), one row per face | `e_age.csv`, `age_annotated/` | opencv, torch, transformers | yes |
+| `merge.py` | merges A-D | `results.csv`, `summary.json` | pandas | no |
+| `filter_images.py` | keeps the colour images without minors | `filtered/kept.csv`, `filtered/discarded.csv` | pandas | no |
+| `gpu_check.py` | checks that torch and onnxruntime use the GPU | — | torch, onnxruntime | — |
+| `viewer_*.ipynb` | notebooks to look at the results (see [Notebooks](#notebooks)) | — | matplotlib, ipywidgets (opt.) | no |
 
-`common.py` va tenuto nella stessa cartella degli script. Il `pixi.toml` si aspetta la cartella `eval_suite/` nella radice del progetto.
+`common.py` must stay in the same folder as the scripts. `pixi.toml` expects the `eval_suite/` folder in the project root.
 
-## Ambienti pixi
+## Pixi environments
 
-Il progetto è solo per Linux x86_64 (`platforms = ["linux-64"]`).
+The project is Linux x86_64 only (`platforms = ["linux-64"]`).
 
-| ambiente | per cosa | torch | rilevamento volti |
+| environment | for what | torch | face detection |
 |---|---|---|---|
-| `default` | tutto tranne MPS, su GPU NVIDIA | ruote PyTorch CUDA 12.8 | `onnxruntime-gpu` |
-| `cpu` | tutto tranne MPS, senza GPU | `pytorch-cpu` (conda-forge) | `onnxruntime` |
-| `mps` | solo MPS, su GPU (fp16) | ruote PyTorch CUDA 12.8 | — |
-| `mps-cpu` | solo MPS, senza GPU (fp32) | `pytorch-cpu` (conda-forge) | — |
+| `default` | stages that only need pandas/OpenCV: `coherence`, `padding`, `merge`, `filter`, `make_prompts`, `prepare_generic` | — | — |
+| `gpu` | everything except MPS, on an NVIDIA GPU | PyTorch CUDA 12.8 wheels | `onnxruntime-gpu` |
+| `cpu` | everything except MPS, without a GPU | `pytorch-cpu` (conda-forge) | `onnxruntime` |
+| `mps` | MPS only, on GPU (fp16) | PyTorch CUDA 12.8 wheels | — |
+| `mps-cpu` | MPS only, without a GPU (fp32) | `pytorch-cpu` (conda-forge) | — |
 
 ```bash
 # curl -fsSL https://pixi.sh/install.sh | sh
 
-pixi install              # ambiente default (GPU)
-pixi install -e cpu       # ambiente senza GPU
-pixi install -e mps       # MPS su GPU
-pixi install -e mps-cpu   # MPS senza GPU
+pixi install -e gpu       # GPU environment
+pixi install -e cpu       # environment without a GPU
+pixi install -e mps       # MPS on GPU
+pixi install -e mps-cpu   # MPS without a GPU
 ```
 
-Senza `-e`, ogni task gira nell'ambiente `default`. Per usare la CPU si aggiunge `-e cpu`: `pixi run -e cpu quality --out results/`.
+Without `-e`, a task runs in the `default` environment. Stages that use torch (`quality`, `prompt`, `dataset`, `age`) and `prepare` need `-e gpu` or `-e cpu`: `pixi run -e cpu quality --out results/`.
 
 ### GPU
 
-- **Requisiti:** driver NVIDIA recente. Per le RTX 50xx (Blackwell, sm_120) servono torch ≥ 2.7 compilato con CUDA ≥ 12.8, quindi l'ambiente installa torch ≥ 2.8 dalle ruote `cu128`.
-- **Driver CUDA 13:** vanno bene. Un driver CUDA 13 esegue senza problemi programmi compilati per CUDA 12.x.
-- **Perché cu128 e non cu130:** le ruote `cu130` funzionerebbero per torch. Però `onnxruntime-gpu` è compilato per CUDA 12 e non troverebbe le sue librerie, quindi il rilevamento volti tornerebbe sulla CPU.
-- **Verifica:** prima del primo lancio esegui `pixi run gpu-check`. Lo script fa una moltiplicazione di matrici fp16 sulla GPU, apre una sessione onnxruntime su CUDA e segnala se la build di torch non supporta l'architettura della scheda.
-- **Messaggi all'avvio:** ogni script che usa torch stampa la GPU in uso, per esempio `[device] cuda: NVIDIA GeForce RTX 5090 (sm_120), torch 2.x, CUDA 12.8`. `prepare.py` stampa `[face-det] insightface su CUDAExecutionProvider`. Se onnxruntime ricade sulla CPU, `prepare.py` lo segnala e il rilevamento continua sulla CPU, più lento.
-- **Forzare la CPU nell'ambiente GPU:** `--device cpu` per B, C e D; `--cpu` per `prepare.py`.
+- **Requirements:** a recent NVIDIA driver. RTX 50xx cards (Blackwell, sm_120) need torch ≥ 2.7 compiled with CUDA ≥ 12.8, so the environment installs torch ≥ 2.8 from the `cu128` wheels.
+- **CUDA 13 driver:** fine. A CUDA 13 driver runs programs compiled for CUDA 12.x without problems.
+- **Why cu128 and not cu130:** the `cu130` wheels would work for torch. But `onnxruntime-gpu` is built for CUDA 12 and would not find its libraries, so face detection would fall back to the CPU.
+- **Check:** before the first run, execute `pixi run -e gpu gpu-check`. The script does an fp16 matrix multiplication on the GPU, opens an onnxruntime session on CUDA and reports whether the torch build does not support the card architecture.
+- **Start-up messages:** every script that uses torch prints the GPU in use, for example `[device] cuda: NVIDIA GeForce RTX 5090 (sm_120), torch 2.x, CUDA 12.8`. `prepare.py` prints `[face-det] insightface on CUDAExecutionProvider`. If onnxruntime falls back to the CPU, `prepare.py` says so and detection goes on, slower, on the CPU.
+- **Forcing the CPU in the GPU environment:** `--device cpu` for B, C, D and E; `--cpu` for `prepare.py`.
 
 ### CPU
 
-- **Cosa funziona:** tutte le metriche funzionano anche sulla CPU, MPS compreso, solo più lente. Le più pesanti sono MPS (un ViT-H), B (pyiqa) e D (clean-fid).
-- **A e merge:** usano solo OpenCV e pandas, quindi hanno la stessa velocità in tutti e due gli ambienti.
-- **MPS:** gira nel suo ambiente, `mps-cpu` senza GPU. Vedi sotto.
+- **What works:** all the metrics also run on the CPU, MPS included, only slower. The heaviest are MPS (a ViT-H), B (pyiqa), D (clean-fid) and E on many frames.
+- **A, merge and filter:** only use OpenCV and pandas, so they are equally fast in every environment.
+- **MPS:** runs in its own environment, `mps-cpu` without a GPU. See below.
 
-## Esempio con pixi
+## Example with pixi
 
-GPU (ambiente `default`):
+GPU (`gpu` environment):
 
 ```bash
-pixi run gpu-check
-pixi run prepare   --images imgs/ --masks masks/ --out results/
+pixi run -e gpu gpu-check
+pixi run -e gpu prepare --images imgs/ --masks masks/ --out results/
 pixi run coherence --out results/
-pixi run quality   --out results/
-pixi run prompt    --out results/ --prompts prompts.jsonl            # CLIP
+pixi run padding   --out results/
+pixi run -e gpu quality --out results/
+pixi run -e gpu prompt  --out results/ --prompts prompts.jsonl            # CLIP
 pixi run -e mps mps results/ prompts.jsonl MPS_overall_checkpoint.pth MPS/  # MPS
-pixi run dataset   --out results/ --ref originali/crops/face
-pixi run merge     --out results/
+pixi run -e gpu dataset --out results/ --ref originals/crops/face
+pixi run -e gpu age     --out results/                                    # age of the faces
+pixi run merge  --out results/
+pixi run filter --out results/ --by-frame                                 # colour images without minors
 ```
 
-CPU (ambiente `cpu`): stessi comandi con `-e cpu`, per esempio `pixi run -e cpu quality --out results/`. Per MPS si usa `-e mps-cpu` al posto di `-e mps`.
+CPU (`cpu` environment): same commands with `-e cpu`, for example `pixi run -e cpu quality --out results/`. For MPS use `-e mps-cpu` instead of `-e mps`.
 
-Pipeline intera, con argomenti posizionali (immagini, uscita, maschere, prompt; per non passare un argomento usa `""`):
+The whole sequence for a dataset is wrapped in the shell scripts in the project root (`lamarr.sh`, `flux.sh`, `jagg.sh`): `./lamarr.sh` runs everything, `./lamarr.sh quality prompt` only the listed steps.
 
-```bash
-pixi run eval_all imgs/ results/ masks/                    # prepare + A + B + merge, GPU
-pixi run eval_all imgs/ results/ masks/ prompts.jsonl      # + C (solo CLIP)
-pixi run -e cpu eval_all imgs/ results/ masks/             # tutto su CPU
-pixi run quick_all imgs/ results/ masks/                   # solo prepare (senza volti) + A + merge
-```
-
-`eval_all` non include MPS né FID/KID: MPS ha il suo ambiente, e FID/KID richiede un insieme di riferimento.
-
-## Esempio senza pixi
+## Example without pixi
 
 ```bash
 python prepare.py     --images imgs/ --masks masks/ --out res_d1
 python a_coherence.py --out res_d1
 python b_quality.py   --out res_d1
 python c_prompt.py    --out res_d1 --prompts prompts.jsonl
-python c_prompt.py    --out res_d1 --prompts prompts.jsonl --metrics mps --mps-ckpt MPS_overall_checkpoint.pth --mps-repo MPS/   # con transformers 4.27.3
-python d_dataset.py   --out res_d1 --ref res_originali/crops/face
+python c_prompt.py    --out res_d1 --prompts prompts.jsonl --metrics mps --mps-ckpt MPS_overall_checkpoint.pth --mps-repo MPS/   # with transformers 4.27.3
+python d_dataset.py   --out res_d1 --ref res_originals/crops/face
+python e_age.py       --out res_d1
 python merge.py       --out res_d1 --name dataset1
+python filter_images.py --out res_d1 --by-frame
 ```
 
-A, B, C e D leggono solo `index.csv` e i ritagli, quindi l'ordine è libero. Si possono anche lanciare su macchine diverse: per esempio `prepare` e A su un portatile senza GPU, poi B, C e D sulla workstation con la GPU, copiando la cartella `--out`.
+A, B, C, D and E only read `index.csv` and the crops (E, by default, the full frames), so the order is free. You can also run them on different machines: for example `prepare` and A on a laptop without a GPU, then B, C, D and E on the workstation with the GPU, copying the `--out` folder.
 
-`index.csv` salva i percorsi assoluti delle immagini e delle maschere. A e il notebook li rileggono, quindi se sposti la cartella su un'altra macchina quei percorsi devono esistere anche lì. B, C e D usano solo i ritagli dentro `--out`.
+`index.csv` stores the absolute paths of the images and of the masks. A, E (in its default mode) and the notebooks read them again, so if you move the folder to another machine those paths must exist there too. B, C and D only use the crops inside `--out`.
+
+## E. Age estimation and filtering
+
+`e_age.py` is the modern version of the PyImageSearch age-detection tutorial (OpenCV):
+
+| step | 2020 (tutorial) | here |
+|---|---|---|
+| faces | Caffe SSD res10 | **YuNet** (OpenCV `FaceDetectorYN`, ONNX) |
+| age | Caffe CNN, 8 bins | Hugging Face **ViT** (9 bins), replaceable with `--model` |
+
+```bash
+pixi run -e gpu age --out results/                  # the full frames of index.csv: YuNet + age classifier
+pixi run -e gpu age --out results/ --crops          # the face crops (crops/face): detector skipped
+pixi run -e gpu age --out results/ --input photos/  # stand-alone: any image or folder, no index.csv
+pixi run -e gpu age --out results/ --model <hf_repo>   # another age model
+```
+
+- **Output:** `e_age.csv` has one row per face (`file`, `image_path`, face box, `det_score`, `age_bin`, `age_conf`). Images with no detected face get a row with an empty `age_bin`, so they are not processed again when you resume. Unless you pass `--no-draw` (or `--crops`), the annotated frames go to `age_annotated/`.
+- **Output is an age bin** with a probability, not a number. For a numeric age use a regression model (e.g. MiVOLO) through `--model`, if compatible.
+- **First run:** YuNet is downloaded into `models/` and the Hugging Face model from the Hub (network needed).
+- **Resume:** images already present in `e_age.csv` are skipped; `--overwrite` starts again.
+
+`filter_images.py` is the last step. It combines `results.csv` (colour check from stage A, `color_dev_frac_in`) with `e_age.csv`, linking them on the file base name. A row is kept only if **all** of these are true:
+
+- `color_dev_frac_in <= --max-color-dev` (default 0: only images with no colour deviation);
+- at least one face has an age estimate (otherwise a minor cannot be ruled out; `--keep-no-face` overrides this);
+- no face has a bin in `--minor-bins` (default `0-2`, `3-9`, `10-19`), nor `p_minor >= --max-p-minor` (only if `e_age.csv` has a `p_minor` column; `e_age.py` does not write it at the moment).
+
+With `--by-frame` a minor face also discards all the other rows of the same frame (the frame is the `frame_<number>` prefix of the file name). The results are `filtered/kept.csv` and `filtered/discarded.csv` (with the `reason`), inspected with `viewer_filter.ipynb`.
 
 ## MPS
 
-Il checkpoint MPS (`MPS_overall_checkpoint.pth`) non contiene solo i pesi: è l'intero modello serializzato con pickle, comprese le classi interne di `transformers` 4.27.3 (per esempio `CLIPTextTransformer`), che nelle versioni recenti non esistono più. Con un `transformers` recente il caricamento fallisce con un errore di questo tipo:
+The MPS checkpoint (`MPS_overall_checkpoint.pth`) does not only hold the weights: it is the whole model serialised with pickle, including the internal classes of `transformers` 4.27.3 (for example `CLIPTextTransformer`), which do not exist any more in recent versions. With a recent `transformers`, loading fails with an error like this:
 
 ```
 AttributeError: Can't get attribute 'CLIPTextTransformer' on <module 'transformers.models.clip.modeling_clip' ...>
 ```
 
-L'errore non dipende dalla GPU: avviene al caricamento, sia nell'ambiente `default` sia in `cpu`. Per questo MPS gira in un ambiente a parte, che contiene solo torch e `transformers==4.27.3`, con `tokenizers` e `huggingface-hub` della stessa epoca. Ce ne sono due varianti:
+The error does not depend on the GPU: it happens at load time, in both the `gpu` and the `cpu` environments. That is why MPS runs in a separate environment, which only holds torch and `transformers==4.27.3`, with `tokenizers` and `huggingface-hub` of the same era. There are two variants:
 
 ```bash
-# con GPU (fp16)
+# with GPU (fp16)
 pixi install -e mps
 pixi run -e mps mps results/ prompts.jsonl MPS_overall_checkpoint.pth MPS/
 
-# senza GPU (fp32)
+# without GPU (fp32)
 pixi install -e mps-cpu
 pixi run -e mps-cpu mps results/ prompts.jsonl MPS_overall_checkpoint.pth MPS/
 ```
 
-- **Argomenti:** la cartella di uscita, il file dei prompt, il checkpoint e la radice del repo [Kwai-Kolors/MPS](https://github.com/Kwai-Kolors/MPS) clonato, cioè la cartella che contiene `trainer/`. Il repo va solo clonato: il suo `requirements.txt` non va installato.
-- **Dove finisce il risultato:** `mps_score` viene aggiunto a `c_prompt.csv` accanto a `clip_score`, senza ricalcolare CLIP, e poi il task aggiorna `results.csv`.
-- **Su GPU** il modello gira in fp16, come nel repo originale. Se si è caricato correttamente vedi `[mps] caricato su cuda (torch.float16)`.
-- **Senza GPU** (`mps-cpu`): lo script converte il modello in fp32, perché molte operazioni fp16 su CPU non esistono o sono lentissime. Il codice del repo MPS non forza mai fp16 né CUDA, quindi su CPU gira normalmente. Il risultato è lo stesso a meno di piccole differenze numeriche tra fp16 e fp32, ma è lento: è un ViT-H e servono alcuni secondi per immagine. Se si è caricato correttamente vedi `[mps] caricato su cpu (torch.float32)`.
-- **Sicurezza:** il checkpoint viene caricato con `torch.load(weights_only=False)` ed esegue codice all'apertura. Scaricalo solo dal link ufficiale del repo.
+- **Arguments:** the output folder, the prompts file, the checkpoint and the root of the cloned [Kwai-Kolors/MPS](https://github.com/Kwai-Kolors/MPS) repo, i.e. the folder that contains `trainer/`. The repo only has to be cloned: its `requirements.txt` must not be installed.
+- **Where the result goes:** `mps_score` is added to `c_prompt.csv` next to `clip_score`, without recomputing CLIP, and then the task updates `results.csv`.
+- **On GPU** the model runs in fp16, as in the original repo. If it loaded correctly you see `[mps] loaded on cuda (torch.float16)`.
+- **Without GPU** (`mps-cpu`): the script converts the model to fp32, because many fp16 operations on the CPU do not exist or are extremely slow. The code of the MPS repo never forces fp16 or CUDA, so it runs normally on the CPU. The result is the same apart from small numerical differences between fp16 and fp32, but it is slow: it is a ViT-H and each image takes a few seconds. If it loaded correctly you see `[mps] loaded on cpu (torch.float32)`.
+- **Security:** the checkpoint is loaded with `torch.load(weights_only=False)` and runs code when opened. Only download it from the official link of the repo.
 
-## Ripresa
+## Resume
 
-Ogni script riprende da dove si era fermato. Le righe già presenti vengono saltate e si calcolano solo le colonne mancanti: `b_quality.py --metrics musiq` aggiunge musiq senza rifare le altre. Usa `--overwrite` per ricominciare uno stadio.
+Every script resumes from where it stopped. Rows already present are skipped and only the missing columns are computed: `b_quality.py --metrics musiq` adds musiq without redoing the others. Use `--overwrite` to start a stage again.
 
-In `a_coherence.py` i flag si ricalcolano a ogni lancio dalle colonne salvate. Per provare soglie diverse basta rilanciarlo con `--blur-thr`, `--seam-thr`, `--color-frac` o `--mono-spread`, e le immagini non vengono rielaborate. Se cambi `--ref` serve invece `--overwrite`.
+In `a_coherence.py` the flags are recomputed at every run from the saved columns. To try different thresholds just re-run it with `--blur-thr`, `--seam-thr`, `--color-frac` or `--mono-spread`, and the images are not processed again. If you change `--ref` you need `--overwrite` instead.
 
-## Notebook
+## Notebooks
 
-`pixi run lab` apre JupyterLab. In `eval_suite/viewer.ipynb` imposta `SCRIPTS` (la cartella di `common.py`) e `OUT`.
+`pixi run lab` opens JupyterLab. In the notebooks set `OUT` / `RESULTS` (the `--out` folder) and, for the metric viewers, `SCRIPTS` (the folder of `common.py`).
 
-`show(metrica, ...)` ordina in modo crescente e mostra i ritagli con il contorno della maschera sovrapposto, sotto un istogramma che segna i valori visualizzati. Ha due modi:
+- `viewer_filtered.ipynb`, `viewer_dresden.ipynb`: sort the crops by metric. `show(...)` sorts in ascending order and shows the crops under a histogram that marks the displayed values. Modes: quantiles (N images from the minimum to the maximum) and extremes (the N lowest / highest). `viewer_filtered` first filters on `color_dev_frac_in`.
+- `viewer_faces.ipynb`: mosaic of the faces for each age bin, lowest confidence first (the most likely mistakes), and the images without a detected face.
+- `viewer_filter.ipynb`: kept / discarded images of `filter_images.py`, with the metric distributions to choose the thresholds, mosaics grouped by discard reason and a single-frame inspector.
 
-- `mode="quantili"`: N immagini dal minimo al massimo.
-- `mode="pagina"`: N immagini consecutive da `start`.
+None of them uses the GPU: they run in any environment.
 
-Per filtrare usa `kind=` (face, mask, full, tutti) e `flag=` (es. `"sfocato"`). `show_frame(file)` mostra il frame intero con la maschera, il volto rilevato e il box del ritaglio. Il notebook non usa la GPU e gira in qualunque ambiente.
+## Common problems
 
-## Problemi frequenti
-
-| sintomo | causa | soluzione |
+| symptom | cause | solution |
 |---|---|---|
-| `no kernel image is available for execution on the device` | torch senza supporto per l'architettura della GPU (sm_120 per le RTX 50xx) | ambiente `default` (torch ≥ 2.8 cu128); controlla con `pixi run gpu-check` |
-| `[device] cpu` nell'ambiente `default` | torch non vede la GPU (driver assente o troppo vecchio) | `nvidia-smi`, poi `pixi run gpu-check` |
-| `insightface su CPUExecutionProvider` con la GPU | onnxruntime non trova le librerie CUDA 12 / cuDNN 9 | il rilevamento funziona lo stesso, solo più lento; `pixi run gpu-check` per i dettagli |
-| `Can't get attribute 'CLIPTextTransformer'` | MPS lanciato con un `transformers` recente | `pixi run -e mps mps ...` (o `-e mps-cpu` senza GPU) |
-| `No module named 'trainer'` | `--mps-repo` non punta alla radice del repo MPS | passa la cartella che contiene `trainer/` |
+| `no kernel image is available for execution on the device` | torch without support for the GPU architecture (sm_120 for the RTX 50xx) | `gpu` environment (torch ≥ 2.8 cu128); check with `pixi run -e gpu gpu-check` |
+| `[device] cpu` in the `gpu` environment | torch does not see the GPU (driver missing or too old) | `nvidia-smi`, then `pixi run -e gpu gpu-check` |
+| `insightface on CPUExecutionProvider` with a GPU | onnxruntime does not find the CUDA 12 / cuDNN 9 libraries | detection still works, only slower; `pixi run -e gpu gpu-check` for details |
+| `Can't get attribute 'CLIPTextTransformer'` | MPS run with a recent `transformers` | `pixi run -e mps mps ...` (or `-e mps-cpu` without a GPU) |
+| `No module named 'trainer'` | `--mps-repo` does not point to the root of the MPS repo | pass the folder that contains `trainer/` |
+| `No file of results.csv matches a file of e_age.csv` | the two tables refer to different images | run `e_age.py` on the same `--out` as `merge.py`, or check the file names |
+| every image discarded as `no face estimated` | `e_age.py --crops` on a dataset without `crop_kind=face` crops | run `e_age.py` without `--crops` (full frames) |
 
-## Differenze rispetto a eval_images.py v2.0
+## Differences from eval_images.py v2.0
 
-- Corretto il bug per cui, se MPS veniva disattivato a metà ciclo, si saltava la metrica successiva.
-- Senza un volto valido, `det_score` e `face_in_mask` ora valgono NaN invece di 0.
-- `index.csv` salva i box del volto, della maschera e del ritaglio, così il notebook può proiettare la maschera sul ritaglio.
-- insightface carica solo il modulo di detection, quindi è più veloce, e usa la GPU se disponibile.
-- MPS funziona anche su CPU, in fp32.
-- Ogni script stampa all'avvio quale device sta usando e avvisa se la GPU non è supportata.
+- Fixed the bug by which, if MPS was disabled halfway through the loop, the next metric was skipped.
+- Without a valid face, `det_score` and `face_in_mask` are now NaN instead of 0.
+- `index.csv` stores the face, mask and crop boxes, so the notebook can project the mask onto the crop.
+- insightface only loads the detection module, so it is faster, and uses the GPU if available.
+- MPS also works on the CPU, in fp32.
+- Every script prints at start-up which device it is using and warns if the GPU is not supported.
