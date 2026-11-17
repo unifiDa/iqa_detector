@@ -2,3 +2,9 @@
 fooocus-cinematic/
 results/
 MPS/
+
+# age estimation (e_age.py)
+models/
+output/
+__pycache__/
+.pixi/
