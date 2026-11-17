@@ -13,7 +13,8 @@ A row is kept only if ALL these conditions are true:
   * no face has a bin in --minor-bins, nor p_minor >= --max-p-minor (probability of being a minor,
     written by e_age.py: sum of the probabilities of the minor bins)
 With --by-frame a minor face also discards all the other rows of the same frame
-(frame = the "frame_<number>" prefix of the file name).
+(the frame is identified by --frame-regex, default the "frame_<number>" prefix of the file name; a file
+that does not match is its own frame, so by-frame then behaves like per-image).
 
 Writes <dest>/kept.csv and <dest>/discarded.csv (default dest: <out>/filtered), the latter with the
 discard `reason`. Look at them with eval_suite/viewer_filter.ipynb.
@@ -32,9 +33,14 @@ import pandas as pd
 from common import AGE_CSV, FILTER_DIR, MINOR_BINS, RESULTS_CSV
 
 
-def frame_id(name: str) -> str:
-    m = re.match(r"(frame_\d+)", name)
-    return m.group(1) if m else name
+DEFAULT_FRAME_REGEX = r"(frame_\d+)"
+
+
+def frame_id(name: str, pattern: str = DEFAULT_FRAME_REGEX) -> str:
+    """Frame an image belongs to: group 1 of `pattern` (or the whole match) at the start of the file name;
+    the file name itself if it does not match, so that image is its own frame."""
+    m = re.match(pattern, name)
+    return (m.group(1) if m.groups() else m.group(0)) if m else name
 
 
 def build_parser():
@@ -52,6 +58,9 @@ def build_parser():
                     help="discard if p_minor >= threshold (ignored, with a warning, if e_age.csv has no p_minor)")
     ap.add_argument("--by-frame", action="store_true",
                     help="a minor discards the whole frame, not just the row")
+    ap.add_argument("--frame-regex", default=DEFAULT_FRAME_REGEX,
+                    help="with --by-frame: regex matched at the start of the file name that identifies the frame "
+                         "(group 1, or the whole match); names that do not match are their own frame")
     ap.add_argument("--keep-no-face", action="store_true",
                     help="also keep the rows without an estimated face (not recommended)")
     return ap
@@ -95,7 +104,7 @@ def main(argv=None):
     df["minor"] = df["minor"].fillna(False).astype(bool)
 
     if a.by_frame:
-        df["frame"] = df["key"].map(frame_id)
+        df["frame"] = df["key"].map(lambda k: frame_id(k, a.frame_regex))
         df["minor"] = df.groupby("frame")["minor"].transform("any")
 
     reason = pd.Series("", index=df.index)

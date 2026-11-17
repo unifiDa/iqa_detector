@@ -17,6 +17,7 @@ any order, on different machines, and re-run without redoing the work already do
 are skipped and only the missing columns are computed; --overwrite starts the stage again).
 """
 import atexit
+import re
 import sys
 from pathlib import Path
 
@@ -58,6 +59,35 @@ def find_mask(mask_dir: Path, stem: str, template: str):
             return p
     return None
 
+
+
+def find_mask_regex(mask_dir: Path, stem: str, pattern: str, template: str):
+    """Mask name built from a regex on the image stem, so any naming scheme can be described.
+    `pattern` is searched in the stem; `template` is formatted with the groups of the match:
+    {0}, {1}, ... (positional groups), {name} (named groups), {match} (whole match), {stem}.
+    E.g. pattern '^(?P<base>.*?(?:large|medium|small))' + template 'mask_{base}' gives
+    'Agfa_DC-504_0_10.JPG_large_0_inpainted-0.png' -> 'mask_Agfa_DC-504_0_10.JPG_large.png'.
+    Returns None if the pattern does not match or the mask file does not exist."""
+    m = re.search(pattern, stem)
+    if not m:
+        return None
+    base = template.format(*m.groups(), match=m.group(0), stem=stem, **m.groupdict())
+    for ext in IMG_EXT:
+        p = Path(mask_dir) / f"{base}{ext}"
+        if p.exists():
+            return p
+    return None
+
+
+def check_mask_args(ap, regex, template):
+    """--mask-regex and --mask-template go together; fails with a clear message otherwise."""
+    if regex:
+        if not template:
+            ap.error("--mask-regex needs --mask-template")
+        try:
+            re.compile(regex)
+        except re.error as e:
+            ap.error(f"invalid --mask-regex: {e}")
 
 
 def find_mask_generic(mask_dir: Path, stem: str, prefix="mask_"):

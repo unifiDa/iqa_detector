@@ -23,7 +23,8 @@ from pathlib import Path
 
 import cv2
 
-from common import (VERSION, INDEX_CSV, StageTable, bbox_of, choose_crop, find_mask, list_images, load_mask)
+from common import (VERSION, INDEX_CSV, StageTable, bbox_of, check_mask_args, choose_crop, find_mask, find_mask_regex,
+                    list_images, load_mask)
 
 
 def onnx_providers(use_gpu):
@@ -98,8 +99,13 @@ def build_parser():
     ap.add_argument("--images", required=True, type=Path)
     ap.add_argument("--out", required=True, type=Path)
     ap.add_argument("--masks", type=Path, default=None, help="mask folder (optional)")
-    ap.add_argument("--mask-template", default="{prefix}mask",
-                    help="mask name (without extension); fields {prefix} and {stem}")
+    ap.add_argument("--mask-template", default=None,
+                    help="mask name (without extension). Without --mask-regex the fields are {prefix} (part of the "
+                         "image name before 'inpainted') and {stem}, default '{prefix}mask'. With --mask-regex "
+                         "see find_mask_regex in common.py")
+    ap.add_argument("--mask-regex", default=None,
+                    help="regex on the image name (without extension) to describe any mask naming scheme, "
+                         "e.g. '^(?P<base>.*?)_inpainted' with --mask-template '{base}_mask'")
     ap.add_argument("--invert", action="store_true", help="mask with black = edited area")
     ap.add_argument("--no-face-det", action="store_true", help="skip insightface")
     ap.add_argument("--det-thresh", type=float, default=0.3)
@@ -115,7 +121,9 @@ def build_parser():
 
 
 def main(argv=None):
-    args = build_parser().parse_args(argv)
+    ap = build_parser()
+    args = ap.parse_args(argv)
+    check_mask_args(ap, args.mask_regex, args.mask_template)
     print(f"prepare {VERSION}")
     out = args.out
     out.mkdir(parents=True, exist_ok=True)
@@ -138,7 +146,8 @@ def main(argv=None):
 
             mask, mask_path, mask_box = None, None, None
             if args.masks:
-                mp = find_mask(args.masks, path.stem, args.mask_template)
+                mp = (find_mask_regex(args.masks, path.stem, args.mask_regex, args.mask_template) if args.mask_regex
+                      else find_mask(args.masks, path.stem, args.mask_template or "{prefix}mask"))
                 mask = load_mask(mp, bgr.shape, args.invert) if mp else None
                 if mask is not None and mask.any():
                     mask_path, mask_box = mp, bbox_of(mask)
