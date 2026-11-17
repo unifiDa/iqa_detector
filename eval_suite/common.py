@@ -1,18 +1,20 @@
 """
-common.py - funzioni condivise dagli script di valutazione.
+common.py - helpers shared by the evaluation scripts.
 
-Pipeline (tutti gli script scrivono in --out, collegati dalla colonna "file"):
+Pipeline (every script writes into --out and the tables are linked by the "file" column):
 
-  prepare.py     rileva volto/maschera, salva i ritagli    -> index.csv, crops/<kind>/
-  a_coherence.py   A. sfocatura / tinta Lab / bordo           -> a_coherence.csv
-  b_quality.py     B. topiq_nr-face, musiq, clipiqa (pyiqa)   -> b_quality.csv
-  c_prompt.py      C. clip_score, mps_score (serve prompt)    -> c_prompt.csv
-  d_dataset.py     D. FID / KID con clean-fid                 -> d_dataset.json
-  merge.py         unisce tutto                               -> results.csv, summary.json
+  prepare.py        detect face/mask, save the crops            -> index.csv, crops/<kind>/
+  a_coherence.py    A. blur / Lab tint / seam                   -> a_coherence.csv
+  b_quality.py      B. topiq_nr-face, musiq, clipiqa (pyiqa)    -> b_quality.csv
+  c_prompt.py       C. clip_score, mps_score (needs prompts)    -> c_prompt.csv
+  d_dataset.py      D. FID / KID with clean-fid                 -> d_dataset.json
+  e_age.py          E. age estimation of the faces              -> e_age.csv   (one row per face)
+  merge.py          merges everything                           -> results.csv, summary.json
+  filter_images.py  keeps colour images without minors          -> filtered/kept.csv, filtered/discarded.csv
 
-A, B, C e D leggono solo index.csv e i ritagli: si possono lanciare in qualunque ordine,
-su macchine diverse, e rilanciare senza rifare il lavoro gia' fatto (le righe presenti vengono
-saltate e si calcolano solo le colonne mancanti; --overwrite per ricominciare).
+A, B, C, D and E only read index.csv and the crops (E can also read the full frames): they can be run in
+any order, on different machines, and re-run without redoing the work already done (rows already present
+are skipped and only the missing columns are computed; --overwrite starts the stage again).
 """
 import atexit
 import sys
@@ -24,25 +26,28 @@ import pandas as pd
 
 VERSION = "v3.0"
 IMG_EXT = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
-MASK_SIZE = ("large", "medium", "small")      # tupla: l'ordine e' la priorita' (con un set cambiava a ogni lancio)
+MASK_SIZE = ("large", "medium", "small")      # tuple: the order is the priority (with a set it changed at every run)
 CROP_SIZE = 512
 
 INDEX_CSV = "index.csv"
 STAGE_CSV = {"a": "a_coherence.csv", "b": "b_quality.csv", "c": "c_prompt.csv", "p": "padding.csv"}
 D_JSON = "d_dataset.json"
+AGE_CSV = "e_age.csv"                          # one row per detected face, so it is NOT in STAGE_CSV / load_merged
+RESULTS_CSV = "results.csv"
+FILTER_DIR = "filtered"
 
 
 # ----------------------------------------------------------------------------
-# I/O di base
+# Basic I/O
 # ----------------------------------------------------------------------------
 def list_images(d: Path):
     return sorted(p for p in Path(d).iterdir() if p.suffix.lower() in IMG_EXT)
 
 
 def find_mask(mask_dir: Path, stem: str, template: str):
-    """Immagine 'frame_000755_track001_inpainted-0.png' -> maschera 'frame_000755_track001_mask.<ext>'
-    con il template di default '{prefix}mask'. {prefix} = parte del nome prima di 'inpainted'
-    (se manca, nome + '_'), {stem} = nome completo senza estensione."""
+    """Image 'frame_000755_track001_inpainted-0.png' -> mask 'frame_000755_track001_mask.<ext>'
+    with the default template '{prefix}mask'. {prefix} = part of the name before 'inpainted'
+    (name + '_' if missing), {stem} = full name without extension."""
     idx = stem.find("inpainted")
     prefix = stem[:idx] if idx > 0 else stem + "_"
     base = template.format(stem=stem, prefix=prefix)
@@ -55,9 +60,9 @@ def find_mask(mask_dir: Path, stem: str, template: str):
 
 
 def find_mask_generic(mask_dir: Path, stem: str, prefix="mask_"):
-    """Schema 'size': la maschera si chiama <prefix><nome fino a large|medium|small compresi>.<ext>.
-    Es. 'Agfa_DC-504_0_10.JPG_large_0_inpainted-0.png' -> 'mask_Agfa_DC-504_0_10.JPG_large.png'. Ritorna None 
-    se il nome non contiene nessuna delle tre parole o se il file non esiste."""
+    """'size' scheme: the mask is called <prefix><name up to and including large|medium|small>.<ext>.
+    E.g. 'Agfa_DC-504_0_10.JPG_large_0_inpainted-0.png' -> 'mask_Agfa_DC-504_0_10.JPG_large.png'. Returns None
+    if the name contains none of the three words or if the file does not exist."""
     for word in MASK_SIZE:
         idx = stem.find(word)
         if idx >= 0:
@@ -98,14 +103,14 @@ def load_prompts(path: Path, id_key: str, prompt_key: str):
         df = pd.read_json(path, lines=True, dtype=False, convert_dates=False)
     missing = [k for k in (id_key, prompt_key) if k not in df.columns]
     if missing:
-        sys.exit(f"Nel file prompts mancano le colonne {missing}; colonne trovate: {list(df.columns)}. "
-                 f"Usa --id-key e --prompt-key.")
+        sys.exit(f"The prompts file lacks the columns {missing}; columns found: {list(df.columns)}. "
+                 f"Use --id-key and --prompt-key.")
     return {str(i): str(p) for i, p in zip(df[id_key], df[prompt_key]) if pd.notna(p)}
 
 
 def lookup_prompt(prompts, name: str):
-    """Nome file, poi nome senza estensione, poi prefisso piu' lungo
-    (es. chiave 'frame_000758_track001' per 'frame_000758_track001_inpainted-0.png')."""
+    """File name, then name without extension, then longest prefix
+    (e.g. key 'frame_000758_track001' for 'frame_000758_track001_inpainted-0.png')."""
     if not prompts:
         return None
     stem = Path(name).stem
@@ -117,9 +122,9 @@ def lookup_prompt(prompts, name: str):
 
 
 def resolve_device(device=None, verbose=True):
-    """'cuda' se disponibile e supportata da questa build di torch, altrimenti 'cpu'.
-    Stampa GPU e versione CUDA, e avvisa se torch non e' compilato per l'architettura della GPU
-    (es. RTX 50xx / Blackwell = sm_120: serve torch >= 2.7 con CUDA >= 12.8)."""
+    """'cuda' if available and supported by this torch build, otherwise 'cpu'.
+    Prints the GPU and the CUDA version, and warns if torch is not compiled for the GPU architecture
+    (e.g. RTX 50xx / Blackwell = sm_120: needs torch >= 2.7 with CUDA >= 12.8)."""
     try:
         import torch
     except ImportError:
@@ -128,10 +133,10 @@ def resolve_device(device=None, verbose=True):
         return device
     if not torch.cuda.is_available():
         if device:
-            sys.exit(f"--device {device} richiesto ma torch {torch.__version__} non vede la GPU "
-                     f"(build CUDA: {torch.version.cuda}). Usa l'ambiente pixi 'gpu'.")
+            sys.exit(f"--device {device} requested but torch {torch.__version__} cannot see the GPU "
+                     f"(CUDA build: {torch.version.cuda}). Use the 'gpu' pixi environment.")
         if verbose:
-            print(f"[device] cpu (torch {torch.__version__}, build CUDA: {torch.version.cuda})")
+            print(f"[device] cpu (torch {torch.__version__}, CUDA build: {torch.version.cuda})")
         return "cpu"
     dev = device or "cuda"
     idx = torch.device(dev).index or 0
@@ -142,13 +147,13 @@ def resolve_device(device=None, verbose=True):
               f"CUDA {torch.version.cuda}")
     archs = torch.cuda.get_arch_list()
     if archs and arch not in archs and f"compute_{major}{minor}" not in archs:
-        print(f"[warn] questa build di torch e' compilata per {archs}, non per {arch}: "
-              f"aspettati 'no kernel image is available'. Serve torch >= 2.7 con CUDA >= 12.8.")
+        print(f"[warn] this torch build is compiled for {archs}, not for {arch}: "
+              f"expect 'no kernel image is available'. You need torch >= 2.7 with CUDA >= 12.8.")
     return dev
 
 
 def is_num(v):
-    """True se v e' un numero valido (non None / NaN)."""
+    """True if v is a valid number (not None / NaN)."""
     try:
         return v is not None and not pd.isna(v)
     except (TypeError, ValueError):
@@ -156,7 +161,7 @@ def is_num(v):
 
 
 def box_from_row(row, prefix):
-    """Legge un bbox salvato come <prefix>_x0, _y0, _x1, _y1; None se assente."""
+    """Reads a bbox stored as <prefix>_x0, _y0, _x1, _y1; None if absent."""
     vals = [row.get(f"{prefix}_{k}") for k in ("x0", "y0", "x1", "y1")]
     if not all(is_num(v) for v in vals):
         return None
@@ -164,10 +169,10 @@ def box_from_row(row, prefix):
 
 
 # ----------------------------------------------------------------------------
-# Regione e ritaglio
+# Region and crop
 # ----------------------------------------------------------------------------
 def face_region(shape, box):
-    """Ellisse inscritta nel bbox del volto."""
+    """Ellipse inscribed in the face bbox."""
     h, w = shape[:2]
     m = np.zeros((h, w), np.uint8)
     x0, y0, x1, y1 = box
@@ -177,10 +182,10 @@ def face_region(shape, box):
 
 
 def square_box(shape, box, margin=1.4):
-    """Quadrato centrato sul bbox, lato = lato maggiore x margin, SEMPRE dentro l'immagine.
-    Se sporgerebbe dal bordo lo si sposta verso l'interno (la regione non sara' piu' al centro); se e'
-    piu' grande dell'immagine, il lato si riduce al lato corto. Niente padding: i pixel replicati
-    creano strisce innaturali che abbassano MUSIQ/CLIPIQA/TOPIQ e allontanano il ritaglio dal prompt."""
+    """Square centred on the bbox, side = longest side x margin, ALWAYS inside the image.
+    If it would stick out of the border it is shifted inwards (the region will no longer be at the centre); if
+    it is larger than the image, the side is reduced to the short side. No padding: replicated pixels
+    create unnatural stripes that lower MUSIQ/CLIPIQA/TOPIQ and move the crop away from the prompt."""
     h, w = shape[:2]
     x0, y0, x1, y1 = box
     cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
@@ -191,7 +196,7 @@ def square_box(shape, box, margin=1.4):
 
 
 def extract(img, box, size, border=cv2.BORDER_REPLICATE, interp=cv2.INTER_CUBIC):
-    """Ritaglia img nel box (anche fuori dai bordi, con padding) e ridimensiona a size=(w, h)."""
+    """Crops img to the box (even outside the borders, with padding) and resizes to size=(w, h)."""
     h, w = img.shape[:2]
     x0, y0, x1, y1 = box
     pad = max(0, -x0, -y0, x1 - w, y1 - h)
@@ -202,9 +207,9 @@ def extract(img, box, size, border=cv2.BORDER_REPLICATE, interp=cv2.INTER_CUBIC)
 
 
 def choose_crop(bgr, fbox, mask_box, mode, max_side=768):
-    """Ritorna (ritaglio, tipo, box_sorgente, lato_sorgente_px, fattore_di_scala).
-    box_sorgente = (x0, y0, x1, y1) in coordinate dell'immagine originale: serve al notebook
-    per proiettare la maschera sul ritaglio."""
+    """Returns (crop, kind, source_box, source_side_px, scale_factor).
+    source_box = (x0, y0, x1, y1) in coordinates of the original image: the notebook needs it
+    to project the mask onto the crop."""
     h, w = bgr.shape[:2]
     if mode != "full":
         for kind, box in (("face", fbox), ("mask", mask_box)):
@@ -219,17 +224,17 @@ def choose_crop(bgr, fbox, mask_box, mode, max_side=768):
 
 
 # ----------------------------------------------------------------------------
-# Tabelle per stadio (ripresa automatica)
+# Per-stage tables (automatic resume)
 # ----------------------------------------------------------------------------
 def load_index(out_dir: Path):
     p = Path(out_dir) / INDEX_CSV
     if not p.exists():
-        sys.exit(f"{p} non trovato: lancia prima prepare.py --out {out_dir}")
+        sys.exit(f"{p} not found: run prepare.py --out {out_dir} first")
     return pd.read_csv(p)
 
 
 class StageTable:
-    """CSV di uno stadio: una riga per 'file'. Ripresa automatica, salvataggio periodico e all'uscita."""
+    """CSV of one stage: one row per 'file'. Automatic resume, periodic saving and saving on exit."""
 
     def __init__(self, path: Path, overwrite=False, save_every=10):
         self.path, self.save_every, self._n = Path(path), save_every, 0
@@ -237,10 +242,10 @@ class StageTable:
         if self.path.exists() and not overwrite:
             for r in pd.read_csv(self.path).to_dict("records"):
                 self.rows[r["file"]] = r
-            print(f"[resume] {len(self.rows)} righe gia' presenti in {self.path}")
+            print(f"[resume] {len(self.rows)} rows already present in {self.path}")
         elif self.path.exists():
-            print(f"[overwrite] {self.path} verra' riscritto")
-        atexit.register(self.save)              # salva anche con Ctrl+C o errore
+            print(f"[overwrite] {self.path} will be rewritten")
+        atexit.register(self.save)              # also saves on Ctrl+C or error
 
     def get(self, name):
         return self.rows.get(name)
@@ -252,7 +257,7 @@ class StageTable:
             self.save()
 
     def missing(self, name, columns):
-        """Colonne non ancora calcolate per questo file."""
+        """Columns not yet computed for this file."""
         r = self.rows.get(name, {})
         return [c for c in columns if not is_num(r.get(c))]
 
@@ -266,19 +271,19 @@ class StageTable:
 
 
 def run_crop_metrics(out_dir, index, table, metrics, score, applicable, limit=None, extra=None):
-    """Ciclo comune a B e C: per ogni riga di index calcola sul ritaglio le metriche applicabili
-    non ancora presenti in table.
-      metrics:    {nome_metrica: nome_colonna}; il dict puo' perdere voci durante il ciclo
-                  (es. un modello disattivato dopo un errore)
-      score:      f(nome, crop_bgr, riga_index) -> float
-      applicable: f(nome, riga_index) -> bool
-      extra:      f(riga_index) -> dict di colonne descrittive da salvare (es. il prompt)"""
+    """Loop shared by B and C: for every row of index, computes on the crop the applicable metrics
+    not yet present in table.
+      metrics:    {metric_name: column_name}; the dict may lose entries during the loop
+                  (e.g. a model disabled after an error)
+      score:      f(name, crop_bgr, index_row) -> float
+      applicable: f(name, index_row) -> bool
+      extra:      f(index_row) -> dict of descriptive columns to save (e.g. the prompt)"""
     out_dir = Path(out_dir)
     done = errors = skipped = 0
     rows = index.to_dict("records")
     for r in rows:
         if limit is not None and done >= limit:
-            print(f"[limit] raggiunto il limite di {limit} immagini")
+            print(f"[limit] reached the limit of {limit} images")
             break
         names = [n for n in list(metrics) if applicable(n, r)]
         todo = [n for n in names if metrics[n] in table.missing(r["file"], [metrics[n]])]
@@ -292,7 +297,7 @@ def run_crop_metrics(out_dir, index, table, metrics, score, applicable, limit=No
         if extra:
             row.update(extra(r))
         for n in todo:
-            if n not in metrics:                     # disattivata durante il ciclo
+            if n not in metrics:                     # disabled during the loop
                 continue
             column = metrics[n]
             try:
@@ -307,10 +312,10 @@ def run_crop_metrics(out_dir, index, table, metrics, score, applicable, limit=No
             print(f"[{done}] {r['file']}")
     table.save()
     if skipped:
-        print(f"[info] {skipped} ritagli non trovati (rilancia prepare.py?)")
+        print(f"[info] {skipped} crops not found (re-run prepare.py?)")
     if errors:
-        print(f"[info] {errors} errori di calcolo")
-    print(f"[info] {done} righe calcolate o completate")
+        print(f"[info] {errors} computation errors")
+    print(f"[info] {done} rows computed or completed")
 
 
 def describe(df, cols):
@@ -320,16 +325,16 @@ def describe(df, cols):
 
 
 def add_flag(df, mask, name):
-    """Aggiunge `name` alla colonna "flags" (separati da virgola) nelle righe dove mask e' True."""
+    """Adds `name` to the "flags" column (comma separated) in the rows where mask is True."""
     flags = df["flags"].fillna("").astype(str) if "flags" in df else pd.Series("", index=df.index)
     df["flags"] = [f"{f},{name}" if (m and f) else (name if m else f) for f, m in zip(flags, mask)]
     return df
 
 
 def load_merged(out_dir: Path):
-    """index.csv + a/b/c/padding uniti su 'file' (le colonne mancanti restano NaN).
-    Dal padding.csv di check_padding.py si aggiungono i flag: pixel_replicati (banda replicata nel frame
-    originale) e ritaglio_con_padding (box del ritaglio fuori dal frame)."""
+    """index.csv + a/b/c/padding merged on 'file' (missing columns stay NaN).
+    From the padding.csv written by check_padding.py the flags are added: "edge padding" (replicated band in the
+    original frame) and "padded crop" (crop box outside the frame)."""
     out_dir = Path(out_dir)
     df = load_index(out_dir)
     for stage, name in STAGE_CSV.items():
