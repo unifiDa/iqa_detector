@@ -112,8 +112,14 @@ padding = "python eval_suite/check_padding.py"
 merge = "python eval_suite/merge.py"
 # pixi run filter --out results/ --by-frame  (keeps colour images without minors -> results/filtered/)
 filter = "python eval_suite/filter_images.py"
+
 # pixi run export --out results/             (PDF contact sheet + list of the kept images -> results/filtered/kept.pdf, kept.txt)
 export = "python eval_suite/export_images.py"
+
+# pixi run reject --out results/ --list rejected.txt   (moves the images you rejected by eye from kept.csv to discarded.csv)
+reject = "python eval_suite/reject_images.py"
+# pixi run analyze --out results/            (resolution + range of every metric of the final dataset -> filtered/analysis/)
+analyze = "python eval_suite/analyze_dataset.py"
 
 [tasks.lab]
 # opens JupyterLab: pixi run lab, then one of the eval_suite/viewer_*.ipynb notebooks
