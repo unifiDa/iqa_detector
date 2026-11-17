@@ -112,6 +112,8 @@ padding = "python eval_suite/check_padding.py"
 merge = "python eval_suite/merge.py"
 # pixi run filter --out results/ --by-frame  (keeps colour images without minors -> results/filtered/)
 filter = "python eval_suite/filter_images.py"
+# pixi run export --out results/             (PDF contact sheet + list of the kept images -> results/filtered/kept.pdf, kept.txt)
+export = "python eval_suite/export_images.py"
 
 [tasks.lab]
 # opens JupyterLab: pixi run lab, then one of the eval_suite/viewer_*.ipynb notebooks
