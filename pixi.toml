@@ -11,7 +11,7 @@ platforms = ["linux-64"]          # Linux x86_64 only
 #                                               pixi run -e mps mps ...
 #   mps-cpu  -> MPS only, no GPU: fp32, slower.
 #                                               pixi run -e mps-cpu mps ...
-# Stages that use torch (quality, prompt, dataset, age) and prepare (insightface) need `-e gpu` or `-e cpu`;
+# Stages that use torch (quality, prompt, dataset, age, gpu-check) and prepare (insightface) only exist in `-e gpu` / `-e cpu`;
 # coherence, padding, merge, filter and make_prompts only need pandas/OpenCV and run in the default environment.
 # GPU check: pixi run -e gpu gpu-check
 [environments]
@@ -46,7 +46,7 @@ torchvision = "*"
 [feature.eval.pypi-dependencies]
 pyiqa = "*"
 insightface = "*"
-transformers = "*"        # CLIP score (c_prompt.py) and age classifier (e_age.py)
+transformers = ">=4.45"   # CLIP score (c_prompt.py) and age classifier (e_age.py)
 clean-fid = "*"           # dataset-level FID/KID (d_dataset.py)
 pillow = "*"
 
@@ -75,33 +75,39 @@ args = ["out", "prompts", "ckpt", "repo"]
 cmd = """python eval_suite/c_prompt.py --out {{ out }} --prompts {{ prompts }} --metrics mps \
 --mps-ckpt {{ ckpt }} --mps-repo {{ repo }} && python eval_suite/merge.py --out {{ out }}"""
 
-[tasks]
+# Tasks that need torch / onnxruntime / insightface live in the features of the environments that have them, so
+# they do not exist in `default` (there `pixi run quality` would just fail with "No module named torch").
+#   feature gpu  -> gpu-check                       (pixi run -e gpu gpu-check)
+#   feature eval -> prepare, quality, prompt, dataset, age   (pixi run -e gpu|cpu <task>)
+#   all environments (pandas / OpenCV only) -> the [tasks] below
+
+[feature.gpu.tasks]
 # checks that torch and onnxruntime use the GPU
 gpu-check = "python eval_suite/gpu_check.py"
 
-# ---- eval_suite: one stage per task; the trailing arguments are passed to the script ----
-# A runs on CPU (OpenCV); prepare (insightface), B, C, D and E use the GPU if there is one.
-# pixi run prepare --images imgs/ --masks masks/ --out results/
+[feature.eval.tasks]
+# pixi run -e gpu prepare --images imgs/ --masks masks/ --out results/      (insightface finds the faces)
 prepare = "python eval_suite/prepare.py"
-# pixi run prepare_generic --images imgs/ --masks masks/ --out results/
-prepare_generic = "python eval_suite/prepare_generic.py"
-# pixi run make_prompts --images imgs/ --masks masks/ --out prompts.jsonl --json-dir jsons/
-make_prompts = "python eval_suite/make_prompts.py"
-
-
-
-# pixi run coherence --out results/          (A: blur, Lab tint, seam)
-coherence = "python eval_suite/a_coherence.py"
-# pixi run padding --out results/           (replicated pixels in the frame and crops outside the frame; flags for merge)
-padding = "python eval_suite/check_padding.py"
-# pixi run quality --out results/            (B: topiq_nr-face, musiq, clipiqa)
+# pixi run -e gpu quality --out results/     (B: topiq_nr-face, musiq, clipiqa)
 quality = "python eval_suite/b_quality.py"
-# pixi run prompt --out results/ --prompts prompts.jsonl      (C: CLIP score; for MPS use the mps task)
+# pixi run -e gpu prompt --out results/ --prompts prompts.jsonl      (C: CLIP score; for MPS use the mps task)
 prompt = "python eval_suite/c_prompt.py"
-# pixi run dataset --out results/ --ref originali/crops/face  (D: FID/KID)
+# pixi run -e gpu dataset --out results/ --ref originals/crops/face  (D: FID/KID)
 dataset = "python eval_suite/d_dataset.py"
 # pixi run -e gpu age --out results/         (E: age of the faces -> e_age.csv; --crops to use the face crops)
 age = "python eval_suite/e_age.py"
+
+[tasks]
+# ---- eval_suite: one stage per task; the trailing arguments are passed to the script ----
+# Only need pandas / OpenCV: they run in any environment, `default` included.
+# pixi run prepare_generic --images imgs/ --masks masks/ --out results/      (no face detection)
+prepare_generic = "python eval_suite/prepare_generic.py"
+# pixi run make_prompts --json-dir jsons/ --out prompts.jsonl --images imgs/
+make_prompts = "python eval_suite/make_prompts.py"
+# pixi run coherence --out results/          (A: blur, Lab tint, seam)
+coherence = "python eval_suite/a_coherence.py"
+# pixi run padding --out results/            (replicated pixels in the frame and crops outside the frame; flags for merge)
+padding = "python eval_suite/check_padding.py"
 # pixi run merge --out results/              (results.csv + summary.json)
 merge = "python eval_suite/merge.py"
 # pixi run filter --out results/ --by-frame  (keeps colour images without minors -> results/filtered/)

@@ -41,7 +41,7 @@ pixi install -e mps       # MPS on GPU
 pixi install -e mps-cpu   # MPS without a GPU
 ```
 
-Without `-e`, a task runs in the `default` environment. Stages that use torch (`quality`, `prompt`, `dataset`, `age`) and `prepare` need `-e gpu` or `-e cpu`: `pixi run -e cpu quality --out results/`.
+Without `-e`, a task runs in the `default` environment. Stages that use torch (`quality`, `prompt`, `dataset`, `age`) and `prepare` only exist in the `gpu` and `cpu` environments (in `default` pixi says the task does not exist, instead of failing with `No module named 'torch'`): `pixi run -e cpu quality --out results/`. `gpu-check` only exists in `gpu`: `pixi run -e gpu gpu-check`.
 
 ### GPU
 
