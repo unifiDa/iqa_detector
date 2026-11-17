@@ -17,7 +17,8 @@ With --by-frame a minor face also discards all the other rows of the same frame
 that does not match is its own frame, so by-frame then behaves like per-image).
 
 Writes <dest>/kept.csv and <dest>/discarded.csv (default dest: <out>/filtered), the latter with the
-discard `reason`. Look at them with eval_suite/viewer_filter.ipynb.
+discard `reason`. Images you rejected by eye (reject_images.py keeps their names in <dest>/manual_rejects.txt)
+are discarded again at every run, with reason "manual review". Look at them with eval_suite/viewer_filter.ipynb.
 
   python filter_images.py --out res_d1 --by-frame
   python filter_images.py --out res_d1 --max-color-dev 0.02 --dest res_d1/filtered_strict
@@ -30,7 +31,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from common import AGE_CSV, FILTER_DIR, MINOR_BINS, RESULTS_CSV
+from common import (AGE_CSV, FILTER_DIR, MANUAL_REASON, MANUAL_REJECTS, MINOR_BINS, RESULTS_CSV, read_name_list,
+                    stems_of)
 
 
 DEFAULT_FRAME_REGEX = r"(frame_\d+)"
@@ -61,6 +63,9 @@ def build_parser():
     ap.add_argument("--frame-regex", default=DEFAULT_FRAME_REGEX,
                     help="with --by-frame: regex matched at the start of the file name that identifies the frame "
                          "(group 1, or the whole match); names that do not match are their own frame")
+    ap.add_argument("--rejects", type=Path, default=None,
+                    help=f"list of images rejected by eye, one name per line (default: <dest>/{MANUAL_REJECTS} if it "
+                         f"exists; written by reject_images.py)")
     ap.add_argument("--keep-no-face", action="store_true",
                     help="also keep the rows without an estimated face (not recommended)")
     return ap
@@ -113,6 +118,12 @@ def main(argv=None):
     reason[(reason == "") & df.minor] = "possible minor"
     if not a.keep_no_face:
         reason[(reason == "") & (df.n_est == 0)] = "no face estimated"
+    rejects = a.rejects or dest / MANUAL_REJECTS
+    if rejects.exists():
+        manual = stems_of(read_name_list(rejects))
+        hit = (reason == "") & df["file"].map(lambda f: Path(f).stem in manual)
+        reason[hit] = MANUAL_REASON
+        print(f"[manual] {int(hit.sum())} more images discarded from {rejects} ({len(manual)} names in the list)")
     df["reason"] = reason
 
     dest.mkdir(parents=True, exist_ok=True)

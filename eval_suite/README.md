@@ -16,6 +16,8 @@ The evaluation pipeline, split by component. Every script writes into the same `
 | `merge.py` | merges A-D | `results.csv`, `summary.json` | pandas | no |
 | `filter_images.py` | keeps the colour images without minors | `filtered/kept.csv`, `filtered/discarded.csv` | pandas | no |
 | `export_images.py` | saves all the kept (or discarded) images in one PDF contact sheet + a list of paths | `filtered/kept.pdf`, `filtered/kept.txt` | opencv, pandas | no |
+| `reject_images.py` | moves the images you rejected by eye from `kept.csv` to `discarded.csv` | updates `filtered/*.csv`, `filtered/manual_rejects.txt` | pandas | no |
+| `analyze_dataset.py` | resolution and metric ranges of the final dataset | `filtered/analysis/` | pandas, matplotlib | no |
 | `gpu_check.py` | checks that torch and onnxruntime use the GPU | — | torch, onnxruntime | — |
 | `viewer_*.ipynb` | notebooks to look at the results (see [Notebooks](#notebooks)) | — | matplotlib, ipywidgets (opt.) | no |
 
@@ -194,23 +196,26 @@ pixi run export --out results/ --shuffle --limit 300              # a random sam
 
 The PDF is built page by page, so thousands of images are fine. `--cols`, `--rows` and `--tile` change how many thumbnails go on a page and how big they are.
 
-## Common problems
+### Discarding images by eye
 
-| symptom | cause | solution |
-|---|---|---|
-| `no kernel image is available for execution on the device` | torch without support for the GPU architecture (sm_120 for the RTX 50xx) | `gpu` environment (torch ≥ 2.8 cu128); check with `pixi run -e gpu gpu-check` |
-| `[device] cpu` in the `gpu` environment | torch does not see the GPU (driver missing or too old) | `nvidia-smi`, then `pixi run -e gpu gpu-check` |
-| `insightface on CPUExecutionProvider` with a GPU | onnxruntime does not find the CUDA 12 / cuDNN 9 libraries | detection still works, only slower; `pixi run -e gpu gpu-check` for details |
-| `Can't get attribute 'CLIPTextTransformer'` | MPS run with a recent `transformers` | `pixi run -e mps mps ...` (or `-e mps-cpu` without a GPU) |
-| `No module named 'trainer'` | `--mps-repo` does not point to the root of the MPS repo | pass the folder that contains `trainer/` |
-| `No file of results.csv matches a file of e_age.csv` | the two tables refer to different images | run `e_age.py` on the same `--out` as `merge.py`, or check the file names |
-| every image discarded as `no face estimated` | `e_age.py --crops` on a dataset without `crop_kind=face` crops | run `e_age.py` without `--crops` (full frames) |
+After looking at `kept.pdf`, write the names of the images you want to drop in a text file, one per line (file name, name without extension or a full path, so you can paste from `kept.txt`; blank lines and `#` comments are ignored):
 
-## Differences from eval_images.py v2.0
+```bash
+pixi run reject --out results/ --list rejected.txt --dry-run   # see what would change
+pixi run reject --out results/ --list rejected.txt             # do it
+pixi run export --out results/                                 # refresh kept.pdf / kept.txt
+```
 
-- Fixed the bug by which, if MPS was disabled halfway through the loop, the next metric was skipped.
-- Without a valid face, `det_score` and `face_in_mask` are now NaN instead of 0.
-- `index.csv` stores the face, mask and crop boxes, so the notebook can project the mask onto the crop.
-- insightface only loads the detection module, so it is faster, and uses the GPU if available.
-- MPS also works on the CPU, in fp32.
-- Every script prints at start-up which device it is using and warns if the GPU is not supported.
+The matching rows move from `kept.csv` to `discarded.csv` with reason `manual review`. Names that match nothing are listed (typos, other dataset). The names are also stored in `filtered/manual_rejects.txt`, and `filter_images.py` applies that file at every run: **re-running the filter does not bring those images back**. To bring one back, delete its line from `manual_rejects.txt` and re-run `pixi run filter`. `./run.sh <dataset> filter` re-runs the filter too, so the manual rejects stay applied.
+
+### Analysing the final dataset
+
+```bash
+pixi run analyze --out results/                       # the images left in kept.csv
+pixi run analyze --out results/ --group-by crop_kind  # also the ranges per kind of crop (face / mask / full)
+```
+
+It writes `filtered/analysis/`: `report.md` (the whole analysis), `metrics.csv` (per metric: n, min, p05, p25, median, p75, p95, max, mean, std, and whether higher or lower is better), `resolution.csv`, `summary.json`, and two figures, `metrics_hist.png` and `resolution.png`. The numbers come from `results.csv`, so metrics computed after the filter (for example MPS) are included.
+
+- **Resolution:** width and height of the frames (min, max, median, megapixels, aspect ratios, the most frequent resolutions), the kind of crops, the size in px of the face or mask in the source, and how many 512 px crops are enlarged (`upscale` > 1) and by how much.
+- **Quality:** the range of every metric of stages A-C (`topiq_nr-face`, `musiq`, `clipiqa`, `brisque`, `niqe`, `maniqa`, `clip_score`, `mps_score`, the coherence measures) and `p_minor_max`. `topiq_nr-face` only exists for face crops. No-reference metrics are only comparable between images of similar resolution, which is why `--group-by` exists.

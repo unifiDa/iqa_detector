@@ -137,6 +137,8 @@ See [`eval_suite/README.md`](eval_suite/README.md#e-age-estimation-and-filtering
 
 To review every kept image in a single file: `pixi run export --out results/` writes `results/filtered/kept.pdf` (contact sheet) and `kept.txt` (list of paths).
 
+Images you discard by eye are recorded with `pixi run reject --out results/ --list rejected.txt`, and `pixi run analyze --out results/` describes the final dataset (resolution and range of every metric). Details in [`eval_suite/README.md`](eval_suite/README.md#discarding-images-by-eye).
+
 ## License
 
 This project is released under the GNU General Public License v3.0, see [`LICENSE`](LICENSE).

@@ -37,6 +37,8 @@ AGE_CSV = "e_age.csv"                          # one row per detected face, so i
 RESULTS_CSV = "results.csv"
 MINOR_BINS = ["0-2", "3-9", "10-19"]            # age bins counted as minors (e_age.py p_minor, filter_images.py)
 FILTER_DIR = "filtered"
+MANUAL_REJECTS = "manual_rejects.txt"          # images rejected by eye, one per line (reject_images.py; re-applied by filter_images.py)
+MANUAL_REASON = "manual review"
 
 
 # ----------------------------------------------------------------------------
@@ -124,6 +126,22 @@ def bbox_of(region):
     if len(xs) == 0:
         return None
     return int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1
+
+
+def read_name_list(path):
+    """Names from a text file, one per line: blank lines and '#' comments are ignored and paths are cut to their
+    base name, so a list copied from export_images.py (kept.txt) or typed by hand works. Returns a list of base names."""
+    names = []
+    for line in Path(path).read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line and not line.startswith("#"):
+            names.append(Path(line).name)
+    return names
+
+
+def stems_of(names):
+    """Set of names without extension: 'frame_1.png', 'frame_1' and '/x/frame_1.jpg' all become 'frame_1'."""
+    return {Path(n).stem for n in names}
 
 
 def load_prompts(path: Path, id_key: str, prompt_key: str):
