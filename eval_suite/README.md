@@ -78,7 +78,18 @@ pixi run filter --out results/ --by-frame                                 # colo
 
 CPU (`cpu` environment): same commands with `-e cpu`, for example `pixi run -e cpu quality --out results/`. For MPS use `-e mps-cpu` instead of `-e mps`.
 
-The whole sequence for a dataset is wrapped in the shell scripts in the project root (`lamarr.sh`, `flux.sh`, `jagg.sh`): `./lamarr.sh` runs everything, `./lamarr.sh quality prompt` only the listed steps.
+The whole sequence for a dataset is wrapped in `run.sh` in the project root, driven by a config file in `datasets/` (`./run.sh lamarr`, or `./run.sh lamarr quality prompt` for only some steps). To use another dataset copy `datasets/template.env`: see the main README, "Adding a new dataset".
+
+### Mask naming
+
+By default `prepare.py` looks for the mask of `<name>_inpainted-N.png` as `<name>_mask.<ext>`, and `prepare_generic.py` for `mask_<name up to large|medium|small>.<ext>`. Any other scheme is described with a regex on the image name (no extension) and a template that uses its groups, in both scripts:
+
+```bash
+# image img_0012_edit.png -> mask img_0012.png
+python prepare.py --images imgs/ --masks masks/ --out res --mask-regex '^(?P<base>.*)_edit$' --mask-template '{base}'
+```
+
+In the template `{name}` is a named group, `{0}`, `{1}`... are the positional groups, `{match}` the whole match and `{stem}` the whole image name.
 
 ## Example without pixi
 
@@ -125,7 +136,7 @@ pixi run -e gpu age --out results/ --model <hf_repo>   # another age model
 - at least one face has an age estimate (otherwise a minor cannot be ruled out; `--keep-no-face` overrides this);
 - no face has a bin in `--minor-bins` (default `0-2`, `3-9`, `10-19`), nor `p_minor >= --max-p-minor` (default 0.2). `p_minor` is written by `e_age.py` and is the summed probability of the minor bins, so a face the classifier is unsure about is also caught, not only when a minor bin is the top-1. If `e_age.csv` has no `p_minor` values (written by an older version), the filter warns and only uses the bins: re-run `e_age.py --overwrite`.
 
-With `--by-frame` a minor face also discards all the other rows of the same frame (the frame is the `frame_<number>` prefix of the file name). The results are `filtered/kept.csv` and `filtered/discarded.csv` (with the `reason`), inspected with `viewer_filter.ipynb`.
+With `--by-frame` a minor face also discards all the other rows of the same frame. The frame is recognised by `--frame-regex` (default `(frame_\d+)`, matched at the start of the file name, group 1 or the whole match); a file that does not match is its own frame. The results are `filtered/kept.csv` and `filtered/discarded.csv` (with the `reason`), inspected with `viewer_filter.ipynb`.
 
 ## MPS
 

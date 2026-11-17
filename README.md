@@ -15,6 +15,8 @@ Image-quality analysis of inpainted / generated images, in a single repository. 
 
 Full reference of the stages, the pixi environments, the MPS setup and the notebooks: [`eval_suite/README.md`](eval_suite/README.md).
 
+The pipeline is not tied to one dataset: each dataset is a small config file in [`datasets/`](datasets/) and one runner, `./run.sh <dataset>`, executes the steps that config enables. See [Adding a new dataset](#adding-a-new-dataset).
+
 ## Setup
 
 1. Install pixi:
@@ -65,9 +67,9 @@ pixi run -e gpu prepare --images /Scratch/Shullani/Dataset/fooocus-cinematic/ori
 - merge results: `pixi run merge --out /Scratch/Shullani/Dataset/results/`
 - filter (colour images without minors; a minor discards the whole frame): `pixi run filter --out /Scratch/Shullani/Dataset/results/ --by-frame` -> `results/filtered/kept.csv`, `discarded.csv`
 
-- FINAL
-RUN ALL: `./lamarr.sh`
-Run with no preparation: `./lamarr.sh coherence quality prompt mps dataset age merge filter`
+- FINAL (config: [`datasets/lamarr.env`](datasets/lamarr.env))
+RUN ALL: `./run.sh lamarr`
+Run with no preparation: `./run.sh lamarr coherence quality prompt mps dataset age merge filter`
 
 
 ## Dataset -- ITI
@@ -93,7 +95,33 @@ pixi run -e gpu prepare_generic --images /home/dasara/Research/btb-dresden-all/f
 
 - merge results: `pixi run merge --out /home/dasara/Research/results/flux/`
 
-The same sequence is wrapped in `./flux.sh` and `./jagg.sh`. These datasets are generic inpainting (no faces), so the age and filter steps are not part of them.
+The same sequence is `./run.sh flux` and `./run.sh jagg` ([`datasets/flux.env`](datasets/flux.env), [`datasets/jagg.env`](datasets/jagg.env)). These datasets are generic inpainting (no faces), so the age and filter steps are not part of them.
+
+## Adding a new dataset
+
+No code change is needed: describe the dataset in a config file and run it.
+
+```bash
+cp datasets/template.env datasets/mydataset.env     # fill in the paths
+./run.sh mydataset --list                           # which steps the config enables
+./run.sh mydataset                                  # run them all (or name the steps: ./run.sh mydataset quality merge)
+```
+
+Only `INPAINTS` (the images) and `OUT` (the results folder) are required. Everything else switches steps on: `MASKS`, `ORIGINALS` (FID/KID against the originals), `PROMPTS` or `PROMPT_JSON` (CLIP / MPS), `AGE` and `FILTER` (age estimation and colour/minor filter), and so on; [`datasets/template.env`](datasets/template.env) documents every variable.
+
+What usually differs between datasets, and where it is set:
+
+| difference | config variable |
+|---|---|
+| faces or generic inpainting | `PREPARE=faces` / `generic` |
+| how masks are named | `PREPARE_ARGS=(--mask-regex '<regex on the image name>' --mask-template '<mask name>')`, see the template |
+| black = edited area in the masks | `PREPARE_ARGS=(--invert)` |
+| columns of the prompts file | `PROMPT_COLS=(--id-key ... --prompt-key ...)` |
+| which quality metrics | `QUALITY_METRICS=(musiq clipiqa ...)` |
+| how a frame is recognised in the file names (filter `--by-frame`) | `FRAME_REGEX='(clip_\d+)'` |
+| no GPU | `ENV_NAME=cpu` |
+
+The scripts of `eval_suite/` can also be run one by one on any dataset, see [`eval_suite/README.md`](eval_suite/README.md).
 
 ## Age estimation and filtering
 
