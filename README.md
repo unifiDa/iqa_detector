@@ -106,3 +106,7 @@ pixi run filter --out results/ --by-frame     # filtered/kept.csv, filtered/disc
 ```
 
 See [`eval_suite/README.md`](eval_suite/README.md#e-age-estimation-and-filtering) for the options and the exact filtering rules.
+
+## License
+
+This project is released under the GNU General Public License v3.0, see [`LICENSE`](LICENSE).
